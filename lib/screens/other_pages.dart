@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../utils.dart';
 import 'printer_page.dart';
 import 'receipt_page.dart';
+import 'shift_page.dart';
 
 // ================= TRANSAKSI =================
 class TransaksiPage extends StatelessWidget {
@@ -245,6 +246,8 @@ class _PengaturanPageState extends State<PengaturanPage> {
         ]),
       ),
       SizedBox(height: 14),
+      ShiftCard(),
+      SizedBox(height: 14),
       OutlinedButton.icon(
         style: OutlinedButton.styleFrom(minimumSize: Size.fromHeight(48)),
         onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PrinterPage())),
@@ -328,6 +331,12 @@ class AkunPage extends StatelessWidget {
               padding: EdgeInsets.only(top: 6),
               child: Text('Gagal kirim: ${s.syncError}', style: TextStyle(color: Colors.red, fontSize: 12)),
             ),
+          if (s.schemaWarning)
+            Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text('Database Supabase belum diperbarui (kolom meja/pelanggan). Transaksi tetap terkirim, info meja disimpan di catatan. Minta bos menjalankan supabase_perbaikan_kolom_meja.sql.',
+                  style: TextStyle(color: Colors.orange[800], fontSize: 12)),
+            ),
           SizedBox(height: 10),
           Row(children: [
             Expanded(
@@ -340,7 +349,7 @@ class AkunPage extends StatelessWidget {
                   }
                 },
                 icon: Icon(Icons.sync),
-                label: Text('Sinkron Sekarang'),
+                label: FittedBox(fit: BoxFit.scaleDown, child: Text('Sinkron Sekarang', maxLines: 1)),
               ),
             ),
             SizedBox(width: 10),
@@ -348,6 +357,8 @@ class AkunPage extends StatelessWidget {
           ]),
         ]),
       ),
+      SizedBox(height: 12),
+      ShiftCard(),
       SizedBox(height: 12),
       OutlinedButton.icon(
         style: OutlinedButton.styleFrom(minimumSize: Size.fromHeight(48)),

@@ -194,6 +194,7 @@ List<int> buildReceiptBytes({
   for (final l in t.lines) {
     e.wrapped(l.name);
     e.kv('  ${l.qty} x ${rp(l.price)}', rp(l.price * l.qty));
+    if (l.note.isNotEmpty) e.wrapped('  * ${l.note}');
   }
   e.sep();
 

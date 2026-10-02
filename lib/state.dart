@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import 'cloud.dart';
 import 'config.dart';
 import 'models.dart';
@@ -22,6 +23,8 @@ class AppState extends ChangeNotifier {
   String tableNo = '';
   String customerName = '';
   late SharedPreferences _p;
+  int _lineSeq = 0;
+  List<Shift> shifts = []; // terbaru di atas
 
   Future<void> load() async {
     _p = await SharedPreferences.getInstance();
@@ -35,6 +38,12 @@ class AppState extends ChangeNotifier {
     final t = _p.getString('trx');
     transactions =
         t == null ? [] : (jsonDecode(t) as List).map((e) => Trx.fromJson(e as Map<String, dynamic>)).toList();
+    try {
+      final sh = _p.getString('shifts');
+      shifts = sh == null ? [] : (jsonDecode(sh) as List).map((e) => Shift.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    } catch (_) {
+      shifts = [];
+    }
   }
 
   List<MenuItem> _defaultMenus() => [
@@ -52,6 +61,7 @@ class AppState extends ChangeNotifier {
   void _save() {
     _p.setString('menus', jsonEncode(menus.map((e) => e.toJson()).toList()));
     _p.setString('trx', jsonEncode(transactions.map((e) => e.toJson()).toList()));
+    _p.setString('shifts', jsonEncode(shifts.take(100).map((e) => e.toJson()).toList()));
     _p.setString('storeName', storeName);
     _p.setString('kasir', kasir);
     _p.setInt('tax', taxPercent);
@@ -60,36 +70,92 @@ class AppState extends ChangeNotifier {
   List<String> get categories => ['Semua', ...{...menus.map((e) => e.category)}];
 
   // ---- keranjang ----
+  // Satu baris keranjang = satu menu + satu catatan. Menu yang sama dengan catatan berbeda jadi baris terpisah.
+  String _newKey(String menuId) => '$menuId#${++_lineSeq}';
+
+  int qtyOf(String menuId) => cart.values.where((l) => l.item.id == menuId).fold(0, (a, l) => a + l.qty);
+
   void addToCart(MenuItem m) {
-    final l = cart[m.id];
+    CartLine? l;
+    for (final x in cart.values) {
+      if (x.item.id == m.id && x.note.isEmpty) {
+        l = x;
+        break;
+      }
+    }
     if (l == null) {
-      cart[m.id] = CartLine(m, 1);
+      final k = _newKey(m.id);
+      cart[k] = CartLine(k, m, 1);
     } else {
       l.qty++;
     }
     notifyListeners();
   }
 
-  void inc(String id) {
-    final l = cart[id];
+  void inc(String key) {
+    final l = cart[key];
     if (l != null) l.qty++;
     notifyListeners();
   }
 
-  void dec(String id) {
-    final l = cart[id];
+  void dec(String key) {
+    final l = cart[key];
     if (l == null) return;
     if (l.qty <= 1) {
-      cart.remove(id);
+      cart.remove(key);
     } else {
       l.qty--;
     }
     notifyListeners();
   }
 
-  void remove(String id) {
-    cart.remove(id);
+  void remove(String key) {
+    cart.remove(key);
     notifyListeners();
+  }
+
+  /// Isi/ubah/hapus catatan satu baris. [forQty] = berapa porsi yang memakai catatan ini;
+  /// jika lebih sedikit dari jumlah baris, baris dipecah (sisanya tetap dengan catatan lama).
+  void setLineNote(String key, String note, [int? forQty]) {
+    final l = cart[key];
+    if (l == null) return;
+    note = note.trim();
+    final n = (forQty == null || forQty >= l.qty) ? l.qty : (forQty < 1 ? 1 : forQty);
+    if (n >= l.qty) {
+      l.note = note;
+      _mergeLine(l);
+    } else {
+      l.qty -= n;
+      CartLine? same;
+      for (final o in cart.values) {
+        if (o.item.id == l.item.id && o.note == note) {
+          same = o;
+          break;
+        }
+      }
+      if (same != null) {
+        same.qty += n;
+      } else {
+        final k = _newKey(l.item.id);
+        cart[k] = CartLine(k, l.item, n, note: note);
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Gabungkan dengan baris lain yang menunya & catatannya sama.
+  void _mergeLine(CartLine l) {
+    CartLine? other;
+    for (final o in cart.values) {
+      if (o.key != l.key && o.item.id == l.item.id && o.note == l.note) {
+        other = o;
+        break;
+      }
+    }
+    if (other != null) {
+      other.qty += l.qty;
+      cart.remove(l.key);
+    }
   }
 
   void clearCart() {
@@ -147,7 +213,7 @@ class AppState extends ChangeNotifier {
       id: id,
       date: now,
       kasir: kasir,
-      lines: cart.values.map((l) => TrxLine(l.item.name, l.item.price, l.qty)).toList(),
+      lines: cart.values.map((l) => TrxLine(l.item.name, l.item.price, l.qty, l.note)).toList(),
       subtotal: subtotal,
       discount: discount,
       tax: tax,
@@ -190,13 +256,24 @@ class AppState extends ChangeNotifier {
     if (!cloudEnabled) return;
     _timer ??= Timer.periodic(const Duration(seconds: 30), (_) {
       syncPending();
+      syncShifts();
       pullConfig();
     });
     syncPending();
+    syncShifts();
     pullConfig();
   }
 
   String? syncError; // pesan error terakhir saat mengirim transaksi (null = lancar)
+  bool schemaWarning = false; // true = kolom meja/pelanggan belum ada di Supabase (data dikirim lewat catatan)
+
+  /// Kolom belum ada di tabel Supabase (SQL tahap 5 belum dijalankan / schema cache belum dimuat ulang).
+  bool _isMissingColumn(Object e) =>
+      e is PostgrestException &&
+      (e.code == 'PGRST204' || e.code == '42703' || (e.message.contains('column') && e.message.contains('schema cache')));
+
+  Future<void> _upsertTrx(Map<String, dynamic> row) =>
+      sb.from('transactions').upsert(row, onConflict: 'id', ignoreDuplicates: true);
 
   Future<String?> syncPending() async {
     if (!cloudEnabled || _syncing || sb.auth.currentSession == null) return syncError;
@@ -205,10 +282,28 @@ class AppState extends ChangeNotifier {
       syncError = null;
       for (final t in myTransactions.where((t) => !t.synced).toList()) {
         try {
-          await sb.from('transactions').upsert({...t.toCloud(), 'kasir_id': sb.auth.currentUser?.id}, onConflict: 'id', ignoreDuplicates: true);
+          final row = {...t.toCloud(), 'kasir_id': sb.auth.currentUser?.id};
+          try {
+            await _upsertTrx(row);
+            schemaWarning = false;
+          } catch (e) {
+            if (!_isMissingColumn(e)) rethrow;
+            // Database belum punya kolom order_type/table_no/customer_name:
+            // tetap kirim transaksinya, info meja & pelanggan dititipkan di catatan.
+            final fb = Map<String, dynamic>.from(row)
+              ..remove('order_type')
+              ..remove('table_no')
+              ..remove('customer_name');
+            final info = t.orderLabel;
+            if (info.isNotEmpty) fb['note'] = [if (t.note.isNotEmpty) t.note, '[$info]'].join(' ');
+            await _upsertTrx(fb);
+            schemaWarning = true;
+          }
           t.synced = true;
+        } on PostgrestException catch (e) {
+          syncError = e.message; // ditolak server: lanjut ke transaksi berikutnya, jangan macet
         } catch (e) {
-          syncError = '$e'; // offline atau ditolak server; coba lagi nanti
+          syncError = '$e'; // offline: berhenti, coba lagi nanti
           break;
         }
       }
@@ -253,8 +348,8 @@ class AppState extends ChangeNotifier {
         final old = Map<String, CartLine>.from(cart);
         cart.clear();
         for (final e in old.entries) {
-          final m = byId[e.key];
-          if (m != null) cart[e.key] = CartLine(m, e.value.qty);
+          final m = byId[e.value.item.id];
+          if (m != null) cart[e.key] = CartLine(e.key, m, e.value.qty, note: e.value.note);
         }
       }
 
@@ -271,6 +366,77 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
     } catch (_) {}
+  }
+
+  // ---- shift kasir ----
+  Shift? get activeShift {
+    for (final x in shifts) {
+      if (x.isOpen) return x;
+    }
+    return null;
+  }
+
+  /// Total transaksi Tunai (menurut sistem) sejak [from]. Uang yang masuk laci = total tagihan (kembalian sudah dikurangi).
+  int cashSalesSince(DateTime from) =>
+      myTransactions.where((t) => t.method == 'Tunai' && !t.date.isBefore(from)).fold<int>(0, (a, t) => a + t.total);
+
+  void startShift(int openingCash) {
+    if (activeShift != null) return;
+    final now = DateTime.now();
+    final rnd = (now.microsecondsSinceEpoch % 46656).toRadixString(36).toUpperCase().padLeft(3, '0');
+    shifts.insert(
+      0,
+      Shift(
+        id: 'SHF${now.year}${two(now.month)}${two(now.day)}${two(now.hour)}${two(now.minute)}-$rnd',
+        kasir: kasir,
+        branch: branch,
+        openedAt: now,
+        openingCash: openingCash < 0 ? 0 : openingCash,
+      ),
+    );
+    _save();
+    notifyListeners();
+  }
+
+  /// Tutup shift: [closingCash] = uang tunai hasil hitung di laci. Mengembalikan shift yang ditutup.
+  Shift? endShift(int closingCash, String note) {
+    final x = activeShift;
+    if (x == null) return null;
+    x.closedAt = DateTime.now();
+    x.cashSales = cashSalesSince(x.openedAt);
+    x.expectedCash = x.openingCash + x.cashSales;
+    x.closingCash = closingCash < 0 ? 0 : closingCash;
+    x.note = note.trim();
+    x.synced = false;
+    _save();
+    notifyListeners();
+    syncShifts();
+    return x;
+  }
+
+  bool _syncingShift = false;
+  String? shiftSyncError;
+
+  /// Kirim shift yang sudah ditutup ke Supabase (tabel `shifts`). Gagal = coba lagi nanti, data tetap aman di HP.
+  Future<void> syncShifts() async {
+    if (!cloudEnabled || _syncingShift || sb.auth.currentSession == null) return;
+    _syncingShift = true;
+    try {
+      shiftSyncError = null;
+      for (final x in shifts.where((x) => !x.isOpen && !x.synced).toList()) {
+        try {
+          await sb.from('shifts').upsert({...x.toCloud(), 'kasir_id': sb.auth.currentUser?.id}, onConflict: 'id', ignoreDuplicates: true);
+          x.synced = true;
+        } catch (e) {
+          shiftSyncError = '$e';
+          break;
+        }
+      }
+      _save();
+      notifyListeners();
+    } finally {
+      _syncingShift = false;
+    }
   }
 
   Future<void> logout() async {
@@ -297,7 +463,7 @@ class AppState extends ChangeNotifier {
 
   void deleteMenu(MenuItem m) {
     menus.remove(m);
-    cart.remove(m.id);
+    cart.removeWhere((k, l) => l.item.id == m.id);
     _save();
     notifyListeners();
   }

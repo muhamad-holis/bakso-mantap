@@ -29,6 +29,8 @@ do $$ begin
 exception when duplicate_object then null;
 end $$;
 
+notify pgrst, 'reload schema';
+
 -- CEK: transaksi yang sudah masuk ke database (urut terbaru)
 select id, branch, kasir, total, created_at
 from public.transactions order by created_at desc limit 10;

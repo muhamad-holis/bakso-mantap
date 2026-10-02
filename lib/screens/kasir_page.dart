@@ -6,6 +6,7 @@ import '../state.dart';
 import '../theme.dart';
 import '../utils.dart';
 import 'payment_page.dart';
+import 'shift_page.dart';
 
 class KasirPage extends StatefulWidget {
   KasirPage({super.key});
@@ -30,6 +31,27 @@ class _KasirPageState extends State<KasirPage> {
     final left = Padding(
       padding: EdgeInsets.all(12),
       child: Column(children: [
+        if (s.activeShift == null)
+          Padding(
+            padding: EdgeInsets.only(bottom: 10),
+            child: Material(
+              color: Color(0xFFFFF4E0),
+              borderRadius: BorderRadius.circular(10),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => showOpenShiftDialog(context),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(children: [
+                    Icon(Icons.lock_open, size: 18, color: Color(0xFFB45309)),
+                    SizedBox(width: 8),
+                    Expanded(child: Text('Shift belum dibuka. Ketuk untuk isi kas awal.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF7A3E00)))),
+                    Icon(Icons.chevron_right, size: 18, color: Color(0xFFB45309)),
+                  ]),
+                ),
+              ),
+            ),
+          ),
         TextField(
           onChanged: (v) => setState(() => q = v),
           decoration: InputDecoration(
@@ -74,7 +96,7 @@ class _KasirPageState extends State<KasirPage> {
                     mainAxisSpacing: 10,
                     crossAxisSpacing: 10,
                   ),
-                  itemBuilder: (c, i) => _MenuCard(item: list[i], qty: s.cart[list[i].id]?.qty ?? 0),
+                  itemBuilder: (c, i) => _MenuCard(item: list[i], qty: s.qtyOf(list[i].id)),
                 ),
         ),
       ]),
@@ -381,19 +403,87 @@ class _CartPanelState extends State<CartPanel> {
             Text(rp(l.item.price), style: TextStyle(fontSize: 12, color: Colors.grey[700])),
             SizedBox(height: 4),
             Row(children: [
-              _qty(Icons.remove, () => s.dec(l.item.id)),
+              _qty(Icons.remove, () => s.dec(l.key)),
               SizedBox(width: 30, child: Text('${l.qty}', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700))),
-              _qty(Icons.add, () => s.inc(l.item.id)),
+              _qty(Icons.add, () => s.inc(l.key)),
             ]),
+            InkWell(
+              onTap: () => _noteDialog(context, s, l),
+              child: Padding(
+                padding: EdgeInsets.only(top: 6, bottom: 2),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(l.note.isEmpty ? Icons.edit_note : Icons.sticky_note_2_outlined, size: 16, color: l.note.isEmpty ? blue : Color(0xFFB45309)),
+                  SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      l.note.isEmpty ? 'Tambah catatan' : l.note,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: l.note.isEmpty ? blue : Color(0xFFB45309)),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
           ]),
         ),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          InkWell(onTap: () => s.remove(l.item.id), child: Icon(Icons.close, size: 18, color: Colors.grey)),
+          InkWell(onTap: () => s.remove(l.key), child: Icon(Icons.close, size: 18, color: Colors.grey)),
           SizedBox(height: 22),
           Text(rp(l.total), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
         ]),
       ]),
     );
+  }
+
+  Future<void> _noteDialog(BuildContext context, AppState s, CartLine l) async {
+    final c = TextEditingController(text: l.note);
+    var n = l.qty;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => StatefulBuilder(
+        builder: (d, setS) => AlertDialog(
+          title: Text('Catatan • ${l.item.name}'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              TextField(
+                controller: c,
+                autofocus: true,
+                maxLength: 80,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(hintText: 'Contoh: tanpa sambal'),
+              ),
+              Wrap(spacing: 6, children: [
+                for (final q in ['Tanpa sambal', 'Pedas', 'Tanpa seledri', 'Kuah dipisah'])
+                  ActionChip(label: Text(q, style: TextStyle(fontSize: 12)), onPressed: () => c.text = q),
+              ]),
+              if (l.qty > 1) ...[
+                SizedBox(height: 12),
+                Text('Berlaku untuk berapa porsi?', style: TextStyle(fontWeight: FontWeight.w600)),
+                Row(children: [
+                  IconButton(icon: Icon(Icons.remove_circle_outline), onPressed: n > 1 ? () => setS(() => n--) : null),
+                  Text('$n dari ${l.qty}', style: TextStyle(fontWeight: FontWeight.w700)),
+                  IconButton(icon: Icon(Icons.add_circle_outline), onPressed: n < l.qty ? () => setS(() => n++) : null),
+                ]),
+              ],
+            ]),
+          ),
+          actions: [
+            if (l.note.isNotEmpty)
+              TextButton(
+                onPressed: () {
+                  c.clear();
+                  Navigator.pop(d, true);
+                },
+                child: Text('Hapus', style: TextStyle(color: Colors.red)),
+              ),
+            TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Batal')),
+            FilledButton(onPressed: () => Navigator.pop(d, true), child: Text('Simpan')),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) s.setLineNote(l.key, c.text, n);
   }
 
   Future<void> _discountDialog(BuildContext context, AppState s) async {

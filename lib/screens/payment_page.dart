@@ -240,13 +240,13 @@ class _PaymentPageState extends State<PaymentPage> {
         padding: EdgeInsets.all(12),
         decoration: cardDeco(),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Catatan', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          Text('Catatan Transaksi (umum)', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           SizedBox(height: 8),
           TextField(
             controller: note,
             maxLines: 3,
             decoration: InputDecoration(
-              hintText: 'Contoh: tanpa sambal, extra kerupuk, dll...',
+              hintText: 'Catatan untuk seluruh pesanan (opsional). Catatan per item diisi di keranjang.',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
             ),
           ),

@@ -26,9 +26,11 @@ class MenuItem {
 }
 
 class CartLine {
+  final String key; // unik per baris keranjang (menu yang sama bisa punya beberapa baris dengan catatan berbeda)
   final MenuItem item;
   int qty;
-  CartLine(this.item, this.qty);
+  String note; // catatan khusus item ini, mis. 'tanpa sambal'
+  CartLine(this.key, this.item, this.qty, {this.note = ''});
   int get total => item.price * qty;
 }
 
@@ -36,9 +38,100 @@ class TrxLine {
   final String name;
   final int price;
   final int qty;
-  TrxLine(this.name, this.price, this.qty);
-  Map<String, dynamic> toJson() => {'name': name, 'price': price, 'qty': qty};
-  factory TrxLine.fromJson(Map<String, dynamic> j) => TrxLine(j['name'] as String, j['price'] as int, j['qty'] as int);
+  final String note; // catatan per item ('' = tidak ada)
+  TrxLine(this.name, this.price, this.qty, [this.note = '']);
+  Map<String, dynamic> toJson() => {'name': name, 'price': price, 'qty': qty, if (note.isNotEmpty) 'note': note};
+  factory TrxLine.fromJson(Map<String, dynamic> j) =>
+      TrxLine(j['name'] as String, (j['price'] as num).toInt(), (j['qty'] as num).toInt(), (j['note'] as String?) ?? '');
+}
+
+/// Shift kasir: kas awal, kas akhir (hasil hitung uang), dan selisih terhadap tunai di sistem.
+class Shift {
+  final String id;
+  final String kasir;
+  final String branch;
+  final DateTime openedAt;
+  final int openingCash;
+  DateTime? closedAt;
+  int closingCash; // uang tunai hasil hitung kasir saat tutup
+  int cashSales; // total transaksi Tunai selama shift (menurut sistem)
+  int expectedCash; // kas awal + cashSales
+  String note;
+  bool synced;
+  Shift({
+    required this.id,
+    required this.kasir,
+    required this.branch,
+    required this.openedAt,
+    required this.openingCash,
+    this.closedAt,
+    this.closingCash = 0,
+    this.cashSales = 0,
+    this.expectedCash = 0,
+    this.note = '',
+    this.synced = false,
+  });
+
+  bool get isOpen => closedAt == null;
+
+  /// Positif = uang lebih, negatif = uang kurang.
+  int get difference => closingCash - expectedCash;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'kasir': kasir,
+        'branch': branch,
+        'openedAt': openedAt.toIso8601String(),
+        'openingCash': openingCash,
+        'closedAt': closedAt?.toIso8601String(),
+        'closingCash': closingCash,
+        'cashSales': cashSales,
+        'expectedCash': expectedCash,
+        'note': note,
+        'synced': synced,
+      };
+
+  factory Shift.fromJson(Map<String, dynamic> j) => Shift(
+        id: j['id'] as String,
+        kasir: (j['kasir'] as String?) ?? '',
+        branch: (j['branch'] as String?) ?? '',
+        openedAt: DateTime.parse(j['openedAt'] as String),
+        openingCash: (j['openingCash'] as num).toInt(),
+        closedAt: j['closedAt'] == null ? null : DateTime.parse(j['closedAt'] as String),
+        closingCash: ((j['closingCash'] as num?) ?? 0).toInt(),
+        cashSales: ((j['cashSales'] as num?) ?? 0).toInt(),
+        expectedCash: ((j['expectedCash'] as num?) ?? 0).toInt(),
+        note: (j['note'] as String?) ?? '',
+        synced: (j['synced'] as bool?) ?? false,
+      );
+
+  Map<String, dynamic> toCloud() => {
+        'id': id,
+        'kasir': kasir,
+        'branch': branch,
+        'opened_at': openedAt.toUtc().toIso8601String(),
+        'closed_at': closedAt?.toUtc().toIso8601String(),
+        'opening_cash': openingCash,
+        'closing_cash': closingCash,
+        'cash_sales': cashSales,
+        'expected_cash': expectedCash,
+        'difference': difference,
+        'note': note,
+      };
+
+  factory Shift.fromCloud(Map<String, dynamic> j) => Shift(
+        id: j['id'] as String,
+        kasir: (j['kasir'] as String?) ?? '',
+        branch: (j['branch'] as String?) ?? '',
+        openedAt: DateTime.parse(j['opened_at'] as String).toLocal(),
+        openingCash: (j['opening_cash'] as num).toInt(),
+        closedAt: DateTime.parse(j['closed_at'] as String).toLocal(),
+        closingCash: (j['closing_cash'] as num).toInt(),
+        cashSales: (j['cash_sales'] as num).toInt(),
+        expectedCash: (j['expected_cash'] as num).toInt(),
+        note: (j['note'] as String?) ?? '',
+        synced: true,
+      );
 }
 
 class Trx {

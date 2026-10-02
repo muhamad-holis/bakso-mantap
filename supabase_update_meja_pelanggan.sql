@@ -9,6 +9,9 @@ alter table public.transactions add column if not exists customer_name text not 
 -- transaksi lama dibiarkan kosong (tidak diketahui makan di tempat atau bawa pulang).
 -- Policy RLS yang sudah ada tidak perlu diubah.
 
+-- muat ulang schema cache API Supabase (PostgREST) agar kolom baru langsung dikenali
+notify pgrst, 'reload schema';
+
 -- CEK: pesanan terbaru beserta meja & pelanggan
 select id, branch, order_type, table_no, customer_name, total, created_at
 from public.transactions order by created_at desc limit 10;

@@ -17,12 +17,22 @@ class _BosPageState extends State<BosPage> {
   String period = 'Hari ini';
   String branch = 'Semua Cabang';
   final periods = ['Hari ini', 'Kemarin', '7 Hari', '30 Hari'];
+  List<Shift> shifts = []; // shift yang sudah ditutup kasir
   List<String> knownBranches = []; // cabang dari akun kasir, tampil walau belum ada transaksi
 
   @override
   void initState() {
     super.initState();
     _loadBranches();
+    _loadShifts();
+  }
+
+  Future<void> _loadShifts() async {
+    try {
+      final r = await sb.from('shifts').select().order('closed_at', ascending: false).limit(50);
+      final list = [for (final e in r) Shift.fromCloud(Map<String, dynamic>.from(e as Map))];
+      if (mounted) setState(() => shifts = list);
+    } catch (_) {}
   }
 
   Future<void> _loadBranches() async {
@@ -50,6 +60,7 @@ class _BosPageState extends State<BosPage> {
         if (first) rethrow; // gagal pertama kali: tampilkan pesan error
       }
       first = false;
+      _loadShifts();
       await Future.delayed(const Duration(seconds: 10));
     }
   }
@@ -173,6 +184,8 @@ class _BosPageState extends State<BosPage> {
               }
               final top = byMenu.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
 
+              final shiftList = shifts.where((x) => branch == 'Semua Cabang' || x.branch == branch).toList();
+
               String? kemarin;
               if (period == 'Hari ini') {
                 final y = _today.subtract(Duration(days: 1));
@@ -246,6 +259,19 @@ class _BosPageState extends State<BosPage> {
                 _title('Menu terlaris'),
                 if (top.isEmpty) Text('Belum ada data', style: TextStyle(color: Colors.grey)),
                 for (final e in top.take(5)) _row(e.key, '${e.value} terjual'),
+                _title('Tutup shift terbaru'),
+                if (shiftList.isEmpty) Text('Belum ada data', style: TextStyle(color: Colors.grey)),
+                for (final x in shiftList.take(10))
+                  Container(
+                    margin: EdgeInsets.only(bottom: 6),
+                    decoration: cardDeco(),
+                    child: ListTile(
+                      title: Text('${x.kasir.isEmpty ? '-' : x.kasir}${x.branch.isEmpty ? '' : ' • ${x.branch}'}', style: TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text('${tgl(x.openedAt)} ${jam(x.openedAt)}–${jam(x.closedAt!)}\nKas awal ${rp(x.openingCash)} • Tunai sistem ${rp(x.cashSales)}\nKas akhir ${rp(x.closingCash)}${x.note.isEmpty ? '' : '\nCatatan: ${x.note}'}'),
+                      isThreeLine: true,
+                      trailing: Text(selisihText(x.difference), style: TextStyle(fontWeight: FontWeight.w800, color: x.difference == 0 ? green : Color(0xFFC62828))),
+                    ),
+                  ),
                 _title('Transaksi terbaru'),
                 if (list.isEmpty) Text('Belum ada transaksi', style: TextStyle(color: Colors.grey)),
                 for (final t in list.take(30))

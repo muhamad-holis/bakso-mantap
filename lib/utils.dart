@@ -16,6 +16,9 @@ const _bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', '
 String tgl(DateTime d) => '${two(d.day)} ${_bulan[d.month - 1]} ${d.year}';
 String jam(DateTime d) => '${two(d.hour)}:${two(d.minute)}';
 
+/// Teks selisih kas: 'Pas', 'Lebih Rp 5.000', atau 'Kurang Rp 5.000'.
+String selisihText(int d) => d == 0 ? 'Pas (Rp 0)' : (d > 0 ? 'Lebih ${rp(d)}' : 'Kurang ${rp(-d)}');
+
 String receiptText(Trx t, String store) {
   final b = StringBuffer();
   b.writeln(store);
@@ -30,6 +33,7 @@ String receiptText(Trx t, String store) {
   for (final l in t.lines) {
     b.writeln(l.name);
     b.writeln('  ${l.qty} x ${rp(l.price)} = ${rp(l.price * l.qty)}');
+    if (l.note.isNotEmpty) b.writeln('  * ${l.note}');
   }
   b.writeln('--------------------------------');
   b.writeln('Subtotal : ${rp(t.subtotal)}');
@@ -38,7 +42,7 @@ String receiptText(Trx t, String store) {
   b.writeln('TOTAL    : ${rp(t.total)}');
   b.writeln('Bayar (${t.method}): ${rp(t.paid)}');
   b.writeln('Kembali  : ${rp(t.change)}');
-  if (t.note.isNotEmpty) b.writeln('Catatan  : ${t.note}');
+  if (t.note.isNotEmpty) b.writeln('Catatan transaksi: ${t.note}');
   b.writeln('');
   b.writeln('Terima kasih, semoga hari Anda menyenangkan!');
   return b.toString();

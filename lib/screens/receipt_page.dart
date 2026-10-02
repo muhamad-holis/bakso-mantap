@@ -73,6 +73,8 @@ class ReceiptPage extends StatelessWidget {
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(l.name, style: TextStyle(fontWeight: FontWeight.w600)),
                           Text('${l.qty} x ${rp(l.price)}', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+                          if (l.note.isNotEmpty)
+                            Text('Catatan: ${l.note}', style: TextStyle(fontSize: 12, color: Color(0xFFB45309), fontWeight: FontWeight.w600)),
                         ]),
                       ),
                       Text(rp(l.price * l.qty), style: TextStyle(fontWeight: FontWeight.w600)),
@@ -85,7 +87,7 @@ class ReceiptPage extends StatelessWidget {
                 kv('Total', rp(t.total), bold: true),
                 kv('Bayar', rp(t.paid)),
                 kv('Kembalian', rp(t.change), bold: true),
-                if (t.note.isNotEmpty) ...[Divider(height: 22), Text('Catatan: ${t.note}')],
+                if (t.note.isNotEmpty) ...[Divider(height: 22), Text('Catatan transaksi: ${t.note}')],
                 Divider(height: 22),
                 Text('Terima kasih, semoga hari Anda menyenangkan!', textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
               ]),
