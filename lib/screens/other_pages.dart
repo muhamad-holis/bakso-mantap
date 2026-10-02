@@ -13,12 +13,13 @@ class TransaksiPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    if (s.transactions.isEmpty) return Center(child: Text('Belum ada transaksi', style: TextStyle(color: Colors.grey)));
+    final list = s.myTransactions;
+    if (list.isEmpty) return Center(child: Text('Belum ada transaksi', style: TextStyle(color: Colors.grey)));
     return ListView.builder(
       padding: EdgeInsets.all(12),
-      itemCount: s.transactions.length,
+      itemCount: list.length,
       itemBuilder: (c, i) {
-        final t = s.transactions[i];
+        final t = list[i];
         return Container(
           margin: EdgeInsets.only(bottom: 8),
           decoration: cardDeco(),

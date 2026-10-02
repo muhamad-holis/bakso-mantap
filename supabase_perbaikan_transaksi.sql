@@ -14,6 +14,11 @@ drop policy if exists "kasir kirim transaksi" on public.transactions;
 create policy "kasir kirim transaksi" on public.transactions
   for insert to authenticated with check (kasir_id = auth.uid());
 
+-- kasir boleh membaca transaksi miliknya sendiri (dibutuhkan saat kirim/upsert)
+drop policy if exists "kasir baca transaksi sendiri" on public.transactions;
+create policy "kasir baca transaksi sendiri" on public.transactions
+  for select to authenticated using (kasir_id = auth.uid());
+
 drop policy if exists "bos baca semua transaksi" on public.transactions;
 create policy "bos baca semua transaksi" on public.transactions
   for select to authenticated using (public.is_bos());

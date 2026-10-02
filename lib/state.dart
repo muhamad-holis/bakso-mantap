@@ -138,7 +138,11 @@ class AppState extends ChangeNotifier {
   Timer? _timer;
   bool _syncing = false;
 
-  int get pendingCount => transactions.where((t) => !t.synced).length;
+  /// Riwayat yang boleh dilihat akun ini. Mode login: hanya transaksi cabang sendiri
+  /// (riwayat di HP disimpan per perangkat, jadi harus disaring per cabang).
+  List<Trx> get myTransactions => cloudEnabled ? transactions.where((t) => t.branch == branch).toList() : transactions;
+
+  int get pendingCount => myTransactions.where((t) => !t.synced).length;
 
   void setKasirQuiet(String name, [String br = '']) {
     kasir = name;
@@ -162,9 +166,9 @@ class AppState extends ChangeNotifier {
     _syncing = true;
     try {
       syncError = null;
-      for (final t in transactions.where((t) => !t.synced).toList()) {
+      for (final t in myTransactions.where((t) => !t.synced).toList()) {
         try {
-          await sb.from('transactions').upsert(t.toCloud(), onConflict: 'id', ignoreDuplicates: true);
+          await sb.from('transactions').upsert({...t.toCloud(), 'kasir_id': sb.auth.currentUser?.id}, onConflict: 'id', ignoreDuplicates: true);
           t.synced = true;
         } catch (e) {
           syncError = '$e'; // offline atau ditolak server; coba lagi nanti
