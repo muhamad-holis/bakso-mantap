@@ -1,5 +1,7 @@
 import 'dart:typed_data';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
@@ -505,6 +507,11 @@ class BosSettingsPage extends StatefulWidget {
 class _BosSettingsPageState extends State<BosSettingsPage> {
   late final TextEditingController store;
   late final TextEditingController tax;
+  late final TextEditingController bankName;
+  late final TextEditingController bankAcc;
+  late final TextEditingController bankHolder;
+  String qrisUrl = '';
+  bool uploading = false;
   bool saving = false;
 
   @override
@@ -513,10 +520,18 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
     final s = context.read<AppState>();
     store = TextEditingController(text: s.storeName);
     tax = TextEditingController(text: '${s.taxPercent}');
+    bankName = TextEditingController(text: s.bankName);
+    bankAcc = TextEditingController(text: s.bankAccount);
+    bankHolder = TextEditingController(text: s.bankHolder);
+    qrisUrl = s.qrisUrl;
     s.pullConfig().then((_) {
       if (!mounted) return;
       store.text = s.storeName;
       tax.text = '${s.taxPercent}';
+      bankName.text = s.bankName;
+      bankAcc.text = s.bankAccount;
+      bankHolder.text = s.bankHolder;
+      setState(() => qrisUrl = s.qrisUrl);
     });
   }
 
@@ -524,6 +539,9 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
   void dispose() {
     store.dispose();
     tax.dispose();
+    bankName.dispose();
+    bankAcc.dispose();
+    bankHolder.dispose();
     super.dispose();
   }
 
@@ -543,6 +561,123 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menyimpan: $e')));
     }
     if (mounted) setState(() => saving = false);
+  }
+
+  void _toast(String t) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+
+  /// Pilih gambar QRIS dari galeri dan unggah ke Supabase Storage (folder pembayaran/).
+  Future<void> _pickQris() async {
+    try {
+      final f = await ImagePicker().pickImage(source: ImageSource.gallery);
+      if (f == null) return;
+      setState(() => uploading = true);
+      final bytes = await f.readAsBytes();
+      final png = f.name.toLowerCase().endsWith('.png');
+      final path = 'pembayaran/qris-${DateTime.now().millisecondsSinceEpoch}.${png ? 'png' : 'jpg'}';
+      await sb.storage.from('menu-images').uploadBinary(
+            path,
+            bytes,
+            fileOptions: FileOptions(contentType: png ? 'image/png' : 'image/jpeg'),
+          );
+      final url = sb.storage.from('menu-images').getPublicUrl(path);
+      if (mounted) setState(() => qrisUrl = url);
+      _toast('Gambar QRIS terunggah. Tekan "Simpan Pembayaran" agar berlaku di semua cabang.');
+    } catch (e) {
+      if (mounted) _toast('Gagal mengunggah gambar: $e');
+    }
+    if (mounted) setState(() => uploading = false);
+  }
+
+  Future<void> _savePay() async {
+    final s = context.read<AppState>();
+    final bn = bankName.text.trim(), ba = bankAcc.text.trim(), bh = bankHolder.text.trim();
+    setState(() => saving = true);
+    try {
+      await sb.from('app_settings').upsert([
+        {'key': 'qris_url', 'value': qrisUrl},
+        {'key': 'bank_name', 'value': bn},
+        {'key': 'bank_account', 'value': ba},
+        {'key': 'bank_holder', 'value': bh},
+      ]);
+      s.savePayment(qrisUrl, bn, ba, bh);
+      if (mounted) _toast('Tersimpan. HP kasir semua cabang ikut berubah dalam ±30 detik');
+    } catch (e) {
+      if (mounted) _toast('Gagal menyimpan: $e');
+    }
+    if (mounted) setState(() => saving = false);
+  }
+
+  Widget _payCard() {
+    return Container(
+      padding: EdgeInsets.all(14),
+      decoration: cardDeco(),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Pembayaran', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+        SizedBox(height: 2),
+        Text('Tampil di HP kasir semua cabang saat memilih QRIS atau Transfer.', style: TextStyle(color: Colors.grey[700], fontSize: 12)),
+        SizedBox(height: 14),
+        Text('Gambar QRIS', style: TextStyle(fontWeight: FontWeight.w700)),
+        SizedBox(height: 8),
+        if (qrisUrl.isNotEmpty)
+          Center(
+            child: Container(
+              color: Colors.white,
+              constraints: BoxConstraints(maxHeight: 260),
+              child: CachedNetworkImage(
+                imageUrl: qrisUrl,
+                fit: BoxFit.contain,
+                placeholder: (_, __) => Padding(padding: EdgeInsets.all(30), child: CircularProgressIndicator()),
+                errorWidget: (_, __, ___) => Padding(padding: EdgeInsets.all(20), child: Text('Gambar tidak dapat dimuat')),
+              ),
+            ),
+          )
+        else
+          Container(
+            height: 90,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(10), border: Border.all(color: lineColor)),
+            child: Text('Belum ada gambar QRIS', style: TextStyle(color: Colors.grey[600])),
+          ),
+        SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: uploading ? null : _pickQris,
+              icon: Icon(Icons.qr_code_2),
+              label: Text(qrisUrl.isEmpty ? 'Pilih Gambar QRIS' : 'Ganti Gambar'),
+            ),
+          ),
+          if (qrisUrl.isNotEmpty) ...[
+            SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: uploading ? null : () => setState(() => qrisUrl = ''),
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+              child: Icon(Icons.delete_outline),
+            ),
+          ],
+        ]),
+        if (uploading) Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator()),
+        SizedBox(height: 16),
+        Text('Transfer Bank', style: TextStyle(fontWeight: FontWeight.w700)),
+        TextField(controller: bankName, textCapitalization: TextCapitalization.characters, decoration: InputDecoration(labelText: 'Nama bank / e-wallet (mis. BCA)')),
+        TextField(
+          controller: bankAcc,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: InputDecoration(labelText: 'Nomor rekening'),
+        ),
+        TextField(controller: bankHolder, textCapitalization: TextCapitalization.words, decoration: InputDecoration(labelText: 'Atas nama')),
+        SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: blue, minimumSize: Size.fromHeight(48)),
+            onPressed: (saving || uploading) ? null : _savePay,
+            child: Text('Simpan Pembayaran untuk Semua Cabang'),
+          ),
+        ),
+      ]),
+    );
   }
 
   @override
@@ -569,6 +704,9 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
                 ),
               ]),
             ),
+            SizedBox(height: 12),
+            _payCard(),
+            SizedBox(height: 24),
           ]),
         ),
       ]),

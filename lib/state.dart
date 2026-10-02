@@ -17,6 +17,11 @@ class AppState extends ChangeNotifier {
   String kasir = 'admin';
   String branch = '';
   int taxPercent = 11;
+  // pengaturan pembayaran dari bos (sinkron ke semua cabang)
+  String qrisUrl = '';
+  String bankName = '';
+  String bankAccount = '';
+  String bankHolder = '';
   int discount = 0;
   // info pesanan yang sedang dibuat di kasir
   String orderType = orderDineIn;
@@ -31,6 +36,10 @@ class AppState extends ChangeNotifier {
     storeName = _p.getString('storeName') ?? storeName;
     kasir = _p.getString('kasir') ?? kasir;
     taxPercent = _p.getInt('tax') ?? taxPercent;
+    qrisUrl = _p.getString('qrisUrl') ?? '';
+    bankName = _p.getString('bankName') ?? '';
+    bankAccount = _p.getString('bankAccount') ?? '';
+    bankHolder = _p.getString('bankHolder') ?? '';
     final m = _p.getString('menus');
     menus = m == null
         ? _defaultMenus()
@@ -65,6 +74,10 @@ class AppState extends ChangeNotifier {
     _p.setString('storeName', storeName);
     _p.setString('kasir', kasir);
     _p.setInt('tax', taxPercent);
+    _p.setString('qrisUrl', qrisUrl);
+    _p.setString('bankName', bankName);
+    _p.setString('bankAccount', bankAccount);
+    _p.setString('bankHolder', bankHolder);
   }
 
   List<String> get categories => ['Semua', ...{...menus.map((e) => e.category)}];
@@ -319,7 +332,7 @@ class AppState extends ChangeNotifier {
   Future<void> pullConfig() async {
     if (!cloudEnabled || sb.auth.currentSession == null) return;
     try {
-      String sig() => '${jsonEncode(menus.map((e) => e.toJson()).toList())}|$taxPercent|$storeName';
+      String sig() => '${jsonEncode(menus.map((e) => e.toJson()).toList())}|$taxPercent|$storeName|$qrisUrl|$bankName|$bankAccount|$bankHolder';
       final before = sig();
 
       // menu, harga, dan foto khusus cabang HP ini
@@ -359,6 +372,10 @@ class AppState extends ChangeNotifier {
         final v = r['value'] as String;
         if (k == 'store_name' && v.isNotEmpty) storeName = v;
         if (k == 'tax_percent') taxPercent = int.tryParse(v) ?? taxPercent;
+        if (k == 'qris_url') qrisUrl = v;
+        if (k == 'bank_name') bankName = v;
+        if (k == 'bank_account') bankAccount = v;
+        if (k == 'bank_holder') bankHolder = v;
       }
 
       if (sig() != before) {
@@ -469,6 +486,15 @@ class AppState extends ChangeNotifier {
   }
 
   // ---- pengaturan ----
+  void savePayment(String qris, String bank, String account, String holder) {
+    qrisUrl = qris;
+    bankName = bank;
+    bankAccount = account;
+    bankHolder = holder;
+    _save();
+    notifyListeners();
+  }
+
   void saveSettings(String store, String kasirName, int tax) {
     storeName = store;
     kasir = kasirName;

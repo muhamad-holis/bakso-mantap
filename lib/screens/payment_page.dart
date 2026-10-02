@@ -1,4 +1,6 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -43,7 +45,7 @@ class _PaymentPageState extends State<PaymentPage> {
     final paid = _paid(s);
     final ok = total > 0 && paid >= total;
 
-    final left = Column(children: [_totalCard(s), SizedBox(height: 12), _methodCard(), if (method == 'Tunai') ...[SizedBox(height: 12), _cashCard(s, paid)]]);
+    final left = Column(children: [_totalCard(s), SizedBox(height: 12), _methodCard(), if (method == 'Tunai') ...[SizedBox(height: 12), _cashCard(s, paid)], if (method == 'QRIS') ...[SizedBox(height: 12), _qrisCard(s)], if (method == 'Transfer') ...[SizedBox(height: 12), _transferCard(s)]]);
     final right = Column(children: [
       if (method == 'Tunai') ...[_keypad(s, ok), SizedBox(height: 12)],
       _rincian(s, paid),
@@ -132,6 +134,88 @@ class _PaymentPageState extends State<PaymentPage> {
           ),
         ),
     ]);
+  }
+
+  void _zoomQris(String url) => showDialog(
+        context: context,
+        builder: (d) => Dialog(
+          backgroundColor: Colors.white,
+          insetPadding: EdgeInsets.all(12),
+          child: Stack(children: [
+            InteractiveViewer(child: CachedNetworkImage(imageUrl: url, fit: BoxFit.contain)),
+            Positioned(right: 0, top: 0, child: IconButton(icon: Icon(Icons.close), onPressed: () => Navigator.pop(d))),
+          ]),
+        ),
+      );
+
+  Widget _notSet(String msg) => Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(12),
+        decoration: BoxDecoration(color: Color(0xFFFFF4E0), borderRadius: BorderRadius.circular(10)),
+        child: Text(msg, style: TextStyle(color: Color(0xFF7A3E00), fontWeight: FontWeight.w600)),
+      );
+
+  Widget _qrisCard(AppState s) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(14),
+      decoration: cardDeco(),
+      child: Column(children: [
+        Text('Scan QRIS untuk membayar', style: TextStyle(fontWeight: FontWeight.w700)),
+        SizedBox(height: 4),
+        Text(rp(s.total), style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: navy)),
+        SizedBox(height: 10),
+        if (s.qrisUrl.isEmpty)
+          _notSet('Gambar QRIS belum diatur oleh bos.')
+        else
+          InkWell(
+            onTap: () => _zoomQris(s.qrisUrl),
+            child: Container(
+              color: Colors.white,
+              constraints: BoxConstraints(maxHeight: 380),
+              child: CachedNetworkImage(
+                imageUrl: s.qrisUrl,
+                fit: BoxFit.contain,
+                placeholder: (_, __) => Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()),
+                errorWidget: (_, __, ___) => _notSet('Gambar QRIS belum bisa dimuat. Periksa koneksi internet.'),
+              ),
+            ),
+          ),
+        if (s.qrisUrl.isNotEmpty) Padding(padding: EdgeInsets.only(top: 6), child: Text('Ketuk gambar untuk memperbesar', style: TextStyle(fontSize: 12, color: Colors.grey[600]))),
+      ]),
+    );
+  }
+
+  Widget _transferCard(AppState s) {
+    final has = s.bankAccount.isNotEmpty;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(14),
+      decoration: cardDeco(),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Transfer ke rekening', style: TextStyle(fontWeight: FontWeight.w700)),
+        SizedBox(height: 4),
+        Text(rp(s.total), style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: navy)),
+        SizedBox(height: 10),
+        if (!has)
+          _notSet('Nomor rekening belum diatur oleh bos.')
+        else ...[
+          if (s.bankName.isNotEmpty) Text(s.bankName, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.grey[800])),
+          Row(children: [
+            Expanded(child: SelectableText(s.bankAccount, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: 1))),
+            IconButton(
+              tooltip: 'Salin nomor rekening',
+              icon: Icon(Icons.copy),
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: s.bankAccount));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Nomor rekening disalin')));
+              },
+            ),
+          ]),
+          if (s.bankHolder.isNotEmpty) Text('a.n. ${s.bankHolder}', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        ],
+      ]),
+    );
   }
 
   Widget _cashCard(AppState s, int paid) {
