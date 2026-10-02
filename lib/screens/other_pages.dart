@@ -301,6 +301,7 @@ class AkunPage extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(s.kasir, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
               Text(s.branch.isEmpty ? 'Kasir' : 'Kasir • ${s.branch}', style: TextStyle(color: Colors.grey[700])),
+              Text('Build #$buildNumber', style: TextStyle(color: Colors.grey[500], fontSize: 12)),
             ]),
           ),
         ]),
