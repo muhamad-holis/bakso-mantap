@@ -5,6 +5,7 @@ import '../state.dart';
 import '../theme.dart';
 import '../utils.dart';
 import 'kasir_page.dart';
+import 'laporan_cabang.dart';
 import 'other_pages.dart';
 
 class HomeShell extends StatefulWidget {
@@ -28,6 +29,7 @@ class _HomeShellState extends State<HomeShell> {
       ? [
           [Icons.home_rounded, 'Kasir'],
           [Icons.receipt_long_outlined, 'Transaksi'],
+          [Icons.bar_chart_rounded, 'Laporan'],
           [Icons.person_outline, 'Akun'],
         ]
       : [
@@ -44,7 +46,7 @@ class _HomeShellState extends State<HomeShell> {
     final body = IndexedStack(
       index: idx,
       children: cloudEnabled
-          ? [KasirPage(), TransaksiPage(), AkunPage()]
+          ? [KasirPage(), TransaksiPage(), LaporanCabangPage(), AkunPage()]
           : [KasirPage(), TransaksiPage(), MenuPage(), LaporanPage(), PengaturanPage()],
     );
     return Scaffold(
