@@ -5,6 +5,7 @@ import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../utils.dart';
+import 'printer_page.dart';
 
 class ReceiptPage extends StatelessWidget {
   final Trx trx;
@@ -29,6 +30,13 @@ class ReceiptPage extends StatelessWidget {
         backgroundColor: navy,
         foregroundColor: Colors.white,
         automaticallyImplyLeading: !fresh,
+        actions: [
+          IconButton(
+            tooltip: 'Pengaturan printer',
+            icon: Icon(Icons.print_outlined),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PrinterPage())),
+          ),
+        ],
       ),
       body: Center(
         child: ConstrainedBox(
@@ -80,6 +88,13 @@ class ReceiptPage extends StatelessWidget {
               ]),
             ),
             SizedBox(height: 14),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(minimumSize: Size.fromHeight(50), backgroundColor: green),
+              onPressed: () => printReceiptFlow(context, t, s.storeName, s.tagline),
+              icon: Icon(Icons.print),
+              label: Text('Cetak Struk'),
+            ),
+            SizedBox(height: 10),
             Row(children: [
               Expanded(
                 child: OutlinedButton.icon(

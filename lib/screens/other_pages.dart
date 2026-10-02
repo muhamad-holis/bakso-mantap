@@ -5,6 +5,7 @@ import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../utils.dart';
+import 'printer_page.dart';
 import 'receipt_page.dart';
 
 // ================= TRANSAKSI =================
@@ -244,6 +245,13 @@ class _PengaturanPageState extends State<PengaturanPage> {
       ),
       SizedBox(height: 14),
       OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(minimumSize: Size.fromHeight(48)),
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PrinterPage())),
+        icon: Icon(Icons.print_outlined),
+        label: Text('Printer Struk (Bluetooth)'),
+      ),
+      SizedBox(height: 14),
+      OutlinedButton.icon(
         style: OutlinedButton.styleFrom(minimumSize: Size.fromHeight(48), foregroundColor: Colors.red),
         onPressed: () async {
           final ok = await showDialog<bool>(
@@ -338,6 +346,13 @@ class AkunPage extends StatelessWidget {
             Expanded(child: FilledButton.icon(onPressed: s.logout, icon: Icon(Icons.logout), label: Text('Keluar'))),
           ]),
         ]),
+      ),
+      SizedBox(height: 12),
+      OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(minimumSize: Size.fromHeight(48)),
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PrinterPage())),
+        icon: Icon(Icons.print_outlined),
+        label: Text('Printer Struk (Bluetooth)'),
       ),
       SizedBox(height: 10),
       Text('Menu, harga, dan pajak diatur oleh bos.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[700], fontSize: 12)),

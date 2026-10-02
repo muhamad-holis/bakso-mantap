@@ -42,6 +42,19 @@ jobs:
           grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml || \
             sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' android/app/src/main/AndroidManifest.xml
 
+      - name: Izin Bluetooth untuk cetak struk
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          for P in BLUETOOTH BLUETOOTH_ADMIN BLUETOOTH_CONNECT BLUETOOTH_SCAN; do
+            if ! grep -q "android.permission.$P\"" $M; then
+              EXTRA=''
+              case $P in
+                BLUETOOTH|BLUETOOTH_ADMIN) EXTRA=' android:maxSdkVersion="30"';;
+              esac
+              sed -i "s#<application#<uses-permission android:name=\"android.permission.$P\"$EXTRA/>\n    <application#" $M
+            fi
+          done
+
       - run: flutter pub get
 
       - name: Build APK
