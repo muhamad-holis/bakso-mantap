@@ -182,20 +182,18 @@ class _BosMenuPageState extends State<BosMenuPage> {
   }
 
   Future<void> _edit(Map<String, dynamic>? row) async {
-    final isNew = row == null;
-    if (branches.isEmpty || (!isNew && branch == null)) {
+    final br = branch;
+    if (br == null) {
       _msg('Pilih cabang dulu');
       return;
     }
-    final br = branch ?? ''; // hanya dipakai saat edit menu yang sudah ada
     final cur = row == null ? null : _item(row);
     final name = TextEditingController(text: cur?.name ?? '');
     final price = TextEditingController(text: cur == null ? '' : '${cur.price}');
     final cat = TextEditingController(text: cur?.category ?? 'Bakso');
     final emoji = TextEditingController(text: cur?.emoji ?? '🍜');
-    // Menu baru: awalnya kosong. Bos mencentang cabang lalu mengisi harga tiap cabang.
-    final sel = <String>{};
-    final prices = {for (final b in branches) b: TextEditingController()};
+    final others = branches.where((b) => b != br).toList();
+    final extra = <String>{};
     XFile? picked;
     Uint8List? preview;
 
@@ -217,21 +215,19 @@ class _BosMenuPageState extends State<BosMenuPage> {
       context: context,
       builder: (d) => StatefulBuilder(
         builder: (d, setS) => AlertDialog(
-          title: Text(isNew ? 'Tambah Menu' : 'Edit Menu'),
+          title: Text(cur == null ? 'Tambah Menu' : 'Edit Menu'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (!isNew) ...[
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(color: Color(0xFFE6EEFB), borderRadius: BorderRadius.circular(8)),
-                  child: Row(children: [
-                    Icon(Icons.store, size: 18, color: navy),
-                    SizedBox(width: 6),
-                    Expanded(child: Text('Cabang: $br', style: TextStyle(fontWeight: FontWeight.w800, color: navy))),
-                  ]),
-                ),
-                SizedBox(height: 12),
-              ],
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(color: Color(0xFFE6EEFB), borderRadius: BorderRadius.circular(8)),
+                child: Row(children: [
+                  Icon(Icons.store, size: 18, color: navy),
+                  SizedBox(width: 6),
+                  Expanded(child: Text('Cabang: $br', style: TextStyle(fontWeight: FontWeight.w800, color: navy))),
+                ]),
+              ),
+              SizedBox(height: 12),
               Center(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
@@ -252,9 +248,9 @@ class _BosMenuPageState extends State<BosMenuPage> {
                 SizedBox(width: 8),
                 Expanded(child: OutlinedButton.icon(onPressed: () => pick(setS, ImageSource.camera), icon: Icon(Icons.photo_camera_outlined, size: 18), label: Text('Kamera'))),
               ]),
-              Text(isNew ? 'Foto dipakai di cabang yang dicentang' : 'Foto hanya untuk $br', style: TextStyle(color: Colors.grey[700], fontSize: 12)),
+              Text('Foto hanya untuk cabang $br', style: TextStyle(color: Colors.grey[700], fontSize: 12)),
               TextField(controller: name, decoration: InputDecoration(labelText: 'Nama menu')),
-              if (!isNew) TextField(controller: price, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Harga di $br (Rp)')),
+              TextField(controller: price, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Harga di $br (Rp)')),
               TextField(controller: cat, decoration: InputDecoration(labelText: 'Kategori')),
               SizedBox(height: 6),
               Wrap(spacing: 6, children: [
@@ -262,38 +258,28 @@ class _BosMenuPageState extends State<BosMenuPage> {
                   ActionChip(label: Text(c), onPressed: () => setS(() => cat.text = c)),
               ]),
               TextField(controller: emoji, decoration: InputDecoration(labelText: 'Emoji (jika tanpa foto)')),
-              if (!isNew)
+              if (cur != null)
                 Padding(
                   padding: EdgeInsets.only(top: 8),
                   child: Text('Nama, kategori, dan emoji berlaku di semua cabang. Harga & foto hanya di $br.', style: TextStyle(color: Colors.grey[700], fontSize: 12)),
                 ),
-              if (isNew) ...[
-                SizedBox(height: 14),
-                Text('Pilih cabang & isi harganya', style: TextStyle(fontWeight: FontWeight.w800)),
-                for (final b in branches) ...[
+              if (cur == null && others.isNotEmpty) ...[
+                SizedBox(height: 12),
+                Text('Tambahkan juga ke cabang lain (harga & foto sama)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                for (final b in others)
                   CheckboxListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                     title: Text(b),
-                    value: sel.contains(b),
+                    value: extra.contains(b),
                     onChanged: (v) => setS(() {
                       if (v == true) {
-                        sel.add(b);
+                        extra.add(b);
                       } else {
-                        sel.remove(b);
+                        extra.remove(b);
                       }
                     }),
                   ),
-                  if (sel.contains(b))
-                    Padding(
-                      padding: EdgeInsets.only(left: 4, bottom: 6),
-                      child: TextField(
-                        controller: prices[b],
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(labelText: 'Harga di $b (Rp)', isDense: true),
-                      ),
-                    ),
-                ],
               ],
             ]),
           ),
@@ -306,32 +292,11 @@ class _BosMenuPageState extends State<BosMenuPage> {
     );
     if (ok != true || !mounted) return;
 
+    final p = int.tryParse(price.text.trim()) ?? 0;
     final n = name.text.trim();
-    if (n.isEmpty) {
-      _msg('Nama menu wajib diisi');
+    if (n.isEmpty || p <= 0) {
+      _msg('Nama dan harga wajib diisi');
       return;
-    }
-    final priceBy = <String, int>{};
-    if (isNew) {
-      if (sel.isEmpty) {
-        _msg('Pilih minimal satu cabang');
-        return;
-      }
-      for (final b in sel) {
-        final p = int.tryParse(prices[b]!.text.trim()) ?? 0;
-        if (p <= 0) {
-          _msg('Isi harga untuk $b');
-          return;
-        }
-        priceBy[b] = p;
-      }
-    } else {
-      final p = int.tryParse(price.text.trim()) ?? 0;
-      if (p <= 0) {
-        _msg('Harga wajib diisi');
-        return;
-      }
-      priceBy[br] = p;
     }
     final c = cat.text.trim().isEmpty ? 'Bakso' : cat.text.trim();
     final e = emoji.text.trim().isEmpty ? '🍜' : emoji.text.trim();
@@ -346,16 +311,17 @@ class _BosMenuPageState extends State<BosMenuPage> {
       } else {
         id = cur.id;
       }
-      if (picked != null) img = await _upload(picked!, id, isNew ? (priceBy.keys.toList()..sort()).first : br);
+      if (picked != null) img = await _upload(picked!, id, br);
       if (cur == null) {
-        await sb.from('menus').upsert({'id': id, 'name': n, 'category': c, 'price': priceBy.values.first, 'emoji': e});
+        await sb.from('menus').upsert({'id': id, 'name': n, 'category': c, 'price': p, 'emoji': e});
       } else {
         await sb.from('menus').update({'name': n, 'category': c, 'emoji': e}).eq('id', id);
       }
+      final targets = cur == null ? <String>{br, ...extra} : <String>{br};
       await sb.from('menu_branch').upsert([
-        for (final en in priceBy.entries) {'menu_id': id, 'branch': en.key, 'price': en.value, 'image_url': img},
+        for (final b in targets) {'menu_id': id, 'branch': b, 'price': p, 'image_url': img},
       ]);
-      if (mounted) _msg('Tersimpan untuk ${priceBy.keys.join(', ')}. HP kasir ikut berubah dalam ±30 detik');
+      if (mounted) _msg('Tersimpan untuk $br. HP kasir ikut berubah dalam ±30 detik');
       await _load();
     } catch (err) {
       if (mounted) _msg('Gagal menyimpan: $err');
@@ -469,7 +435,7 @@ class _BosMenuPageState extends State<BosMenuPage> {
     }
 
     return Scaffold(
-      floatingActionButton: branches.isEmpty
+      floatingActionButton: branch == null
           ? null
           : FloatingActionButton.extended(
               backgroundColor: blue,
