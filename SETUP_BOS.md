@@ -31,3 +31,5 @@ Catatan:
 - Saat tambah menu baru, bos bisa mencentang cabang lain agar menu yang sama ikut ditambahkan. Tombol 'Salin menu dari cabang lain' mempercepat cabang baru.
 - Foto diambil dari Galeri/Kamera HP bos, diunggah ke Supabase Storage, dan otomatis muncul di HP kasir cabang itu (disimpan di cache, tetap tampil saat internet mati).
 - Daftar cabang diambil dari kolom `branch` akun kasir.
+
+- Jika transaksi kasir tidak muncul di laporan bos, jalankan `supabase_perbaikan_transaksi.sql` (aman diulang). Layar Akun kasir menampilkan pesan error bila pengiriman gagal.

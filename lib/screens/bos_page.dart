@@ -37,8 +37,22 @@ class _BosPageState extends State<BosPage> {
   }
 
   // 1000 transaksi terbaru, update otomatis (realtime)
-  late final Stream<List<Map<String, dynamic>>> stream =
-      sb.from('transactions').stream(primaryKey: ['id']).order('created_at', ascending: false).limit(1000);
+  // Diambil ulang tiap 10 detik (tidak bergantung pada fitur realtime Supabase)
+  late final Stream<List<Map<String, dynamic>>> stream = _poll();
+
+  Stream<List<Map<String, dynamic>>> _poll() async* {
+    var first = true;
+    while (mounted) {
+      try {
+        final r = await sb.from('transactions').select().order('created_at', ascending: false).limit(1000);
+        yield [for (final e in r) Map<String, dynamic>.from(e as Map)];
+      } catch (e) {
+        if (first) rethrow; // gagal pertama kali: tampilkan pesan error
+      }
+      first = false;
+      await Future.delayed(const Duration(seconds: 10));
+    }
+  }
 
   bool _inBranch(Trx t) => branch == 'Semua Cabang' || t.branch == branch;
 

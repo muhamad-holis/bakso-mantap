@@ -312,13 +312,21 @@ class AkunPage extends StatelessWidget {
           Text('Sinkron ke Bos', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
           SizedBox(height: 6),
           Text(s.pendingCount == 0 ? 'Semua transaksi sudah terkirim' : '${s.pendingCount} transaksi menunggu dikirim'),
+          if (s.syncError != null && s.pendingCount > 0)
+            Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text('Gagal kirim: ${s.syncError}', style: TextStyle(color: Colors.red, fontSize: 12)),
+            ),
           SizedBox(height: 10),
           Row(children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: () {
-                  s.syncPending();
+                onPressed: () async {
+                  final err = await s.syncPending();
                   s.pullConfig();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err == null ? 'Sinkron selesai' : 'Gagal kirim: $err')));
+                  }
                 },
                 icon: Icon(Icons.sync),
                 label: Text('Sinkron Sekarang'),

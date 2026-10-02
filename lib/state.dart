@@ -155,16 +155,20 @@ class AppState extends ChangeNotifier {
     pullConfig();
   }
 
-  Future<void> syncPending() async {
-    if (!cloudEnabled || _syncing || sb.auth.currentSession == null) return;
+  String? syncError; // pesan error terakhir saat mengirim transaksi (null = lancar)
+
+  Future<String?> syncPending() async {
+    if (!cloudEnabled || _syncing || sb.auth.currentSession == null) return syncError;
     _syncing = true;
     try {
+      syncError = null;
       for (final t in transactions.where((t) => !t.synced).toList()) {
         try {
           await sb.from('transactions').upsert(t.toCloud(), onConflict: 'id', ignoreDuplicates: true);
           t.synced = true;
-        } catch (_) {
-          break; // kemungkinan offline, coba lagi nanti
+        } catch (e) {
+          syncError = '$e'; // offline atau ditolak server; coba lagi nanti
+          break;
         }
       }
       _save();
@@ -172,6 +176,7 @@ class AppState extends ChangeNotifier {
     } finally {
       _syncing = false;
     }
+    return syncError;
   }
 
   /// Ambil menu, harga, nama toko & pajak yang diatur bos.
