@@ -169,12 +169,36 @@ class CartPage extends StatelessWidget {
   }
 }
 
-class CartPanel extends StatelessWidget {
+class CartPanel extends StatefulWidget {
   CartPanel({super.key});
+  @override
+  State<CartPanel> createState() => _CartPanelState();
+}
+
+class _CartPanelState extends State<CartPanel> {
+  late final TextEditingController _name;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: context.read<AppState>().customerName);
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
+    // setelah checkout / hapus semua, nama pelanggan di state kosong -> kosongkan kolom juga
+    if (s.customerName.isEmpty && _name.text.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && context.read<AppState>().customerName.isEmpty) _name.clear();
+      });
+    }
     return Container(
       decoration: cardDeco(),
       child: Column(children: [
@@ -192,9 +216,16 @@ class CartPanel extends StatelessWidget {
         ),
         Divider(height: 1),
         Expanded(
-          child: s.cart.isEmpty
-              ? Center(child: Text('Keranjang kosong\nKetuk menu untuk menambah', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)))
-              : ListView(padding: EdgeInsets.all(10), children: [for (final l in s.cart.values) _line(context, s, l)]),
+          child: ListView(padding: EdgeInsets.all(10), children: [
+            _orderInfo(s),
+            if (s.cart.isEmpty)
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: Text('Keranjang kosong\nKetuk menu untuk menambah', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey))),
+              )
+            else
+              for (final l in s.cart.values) _line(context, s, l),
+          ]),
         ),
         Padding(
           padding: EdgeInsets.all(12),
@@ -219,6 +250,11 @@ class CartPanel extends StatelessWidget {
               ]),
             ),
             SizedBox(height: 10),
+            if (s.cart.isNotEmpty && !s.orderReady)
+              Padding(
+                padding: EdgeInsets.only(bottom: 6),
+                child: Text('Pilih nomor meja dulu (atau pilih Bawa Pulang)', style: TextStyle(color: Color(0xFFC62828), fontSize: 12, fontWeight: FontWeight.w600)),
+              ),
             SizedBox(
               width: double.infinity,
               height: 52,
@@ -228,13 +264,87 @@ class CartPanel extends StatelessWidget {
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                onPressed: s.cart.isEmpty ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => PaymentPage())),
+                onPressed: (s.cart.isEmpty || !s.orderReady) ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => PaymentPage())),
                 icon: Text('Checkout', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                 label: Icon(Icons.arrow_forward),
               ),
             ),
           ]),
         ),
+      ]),
+    );
+  }
+
+  Widget _orderInfo(AppState s) {
+    final takeaway = s.orderType == orderTakeaway;
+    Widget type(String label, IconData icon) {
+      final sel = s.orderType == label;
+      return Expanded(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 3),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => s.setOrderType(label),
+            child: Container(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: sel ? Color(0xFFE6EEFB) : Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: sel ? blue : lineColor, width: sel ? 2 : 1),
+              ),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(icon, size: 18, color: navy),
+                SizedBox(width: 6),
+                Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+              ]),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: EdgeInsets.only(bottom: 10),
+      padding: EdgeInsets.all(8),
+      decoration: cardDeco(color: Color(0xFFFAFCFF)),
+      child: Column(children: [
+        Row(children: [type(orderDineIn, Icons.restaurant), type(orderTakeaway, Icons.shopping_bag_outlined)]),
+        if (!takeaway) ...[
+          SizedBox(height: 10),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 3),
+            child: Row(children: [
+              SizedBox(
+                width: 118,
+                child: DropdownButtonFormField<String>(
+                  value: s.tableNo.isEmpty ? null : s.tableNo,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: 'No. Meja',
+                    isDense: true,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  hint: Text('Pilih'),
+                  items: [for (var i = 1; i <= tableCount; i++) DropdownMenuItem(value: '$i', child: Text('Meja $i'))],
+                  onChanged: (v) => s.setTableNo(v ?? ''),
+                ),
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _name,
+                  textCapitalization: TextCapitalization.words,
+                  onChanged: s.setCustomerName,
+                  decoration: InputDecoration(
+                    labelText: 'Nama pelanggan',
+                    isDense: true,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ],
       ]),
     );
   }

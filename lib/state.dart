@@ -17,6 +17,10 @@ class AppState extends ChangeNotifier {
   String branch = '';
   int taxPercent = 11;
   int discount = 0;
+  // info pesanan yang sedang dibuat di kasir
+  String orderType = orderDineIn;
+  String tableNo = '';
+  String customerName = '';
   late SharedPreferences _p;
 
   Future<void> load() async {
@@ -91,8 +95,37 @@ class AppState extends ChangeNotifier {
   void clearCart() {
     cart.clear();
     discount = 0;
+    _resetOrder();
     notifyListeners();
   }
+
+  // ---- info pesanan (meja & pelanggan) ----
+  void _resetOrder() {
+    orderType = orderDineIn;
+    tableNo = '';
+    customerName = '';
+  }
+
+  /// Bawa pulang tidak memakai nomor meja & nama pelanggan.
+  void setOrderType(String t) {
+    orderType = t;
+    if (t == orderTakeaway) {
+      tableNo = '';
+      customerName = '';
+    }
+    notifyListeners();
+  }
+
+  void setTableNo(String v) {
+    tableNo = v;
+    notifyListeners();
+  }
+
+  /// Tanpa notifyListeners agar tidak rebuild tiap ketukan huruf.
+  void setCustomerName(String v) => customerName = v;
+
+  /// Makan di tempat wajib pilih nomor meja; bawa pulang langsung siap.
+  bool get orderReady => orderType == orderTakeaway || tableNo.isNotEmpty;
 
   void setDiscount(int v) {
     discount = v < 0 ? 0 : (v > subtotal ? subtotal : v);
@@ -124,10 +157,14 @@ class AppState extends ChangeNotifier {
       method: method,
       note: note,
       branch: branch,
+      orderType: orderType,
+      tableNo: orderType == orderTakeaway ? '' : tableNo,
+      customerName: orderType == orderTakeaway ? '' : customerName.trim(),
     );
     transactions.insert(0, t);
     cart.clear();
     discount = 0;
+    _resetOrder();
     _save();
     notifyListeners();
     syncPending();

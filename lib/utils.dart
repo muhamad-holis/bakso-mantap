@@ -23,6 +23,9 @@ String receiptText(Trx t, String store) {
   b.writeln('${tgl(t.date)} ${jam(t.date)}');
   b.writeln('Kasir: ${t.kasir}');
   if (t.branch.isNotEmpty) b.writeln('Cabang: ${t.branch}');
+  if (t.orderType.isNotEmpty) b.writeln('Pesanan: ${t.orderType}');
+  if (t.tableNo.isNotEmpty) b.writeln('Meja: ${t.tableNo}');
+  if (t.customerName.isNotEmpty) b.writeln('Pelanggan: ${t.customerName}');
   b.writeln('--------------------------------');
   for (final l in t.lines) {
     b.writeln(l.name);

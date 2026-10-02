@@ -181,6 +181,14 @@ List<int> buildReceiptBytes({
   e.kv(tgl(t.date), jam(t.date));
   e.kv('Kasir', t.kasir);
   e.kv('Metode', t.method);
+  if (t.orderType.isNotEmpty) {
+    e.sep();
+    e.bold(true);
+    e.wrapped(t.orderType.toUpperCase());
+    if (t.tableNo.isNotEmpty) e.wrapped('MEJA ${t.tableNo}');
+    if (t.customerName.isNotEmpty) e.wrapped('Nama: ${t.customerName}');
+    e.bold(false);
+  }
   e.sep();
 
   for (final l in t.lines) {

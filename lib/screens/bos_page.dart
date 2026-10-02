@@ -255,7 +255,7 @@ class _BosPageState extends State<BosPage> {
                     child: ListTile(
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptPage(trx: t))),
                       title: Text(rp(t.total), style: TextStyle(fontWeight: FontWeight.w800)),
-                      subtitle: Text('${jam(t.date)} • ${tgl(t.date)} • ${t.itemCount} item • ${t.method}\nKasir: ${t.kasir}${t.branch.isEmpty ? '' : ' • ${t.branch}'}'),
+                      subtitle: Text('${jam(t.date)} • ${tgl(t.date)} • ${t.itemCount} item • ${t.method}\nKasir: ${t.kasir}${t.branch.isEmpty ? '' : ' • ${t.branch}'}${t.orderLabel.isEmpty ? '' : '\n${t.orderLabel}'}'),
                       isThreeLine: true,
                       trailing: Icon(Icons.chevron_right),
                     ),

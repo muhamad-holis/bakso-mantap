@@ -61,6 +61,9 @@ class ReceiptPage extends StatelessWidget {
                 kv('Kasir', t.kasir),
                 if (t.branch.isNotEmpty) kv('Cabang', t.branch),
                 kv('Metode', t.method),
+                if (t.orderType.isNotEmpty) kv('Pesanan', t.orderType),
+                if (t.tableNo.isNotEmpty) kv('Nomor Meja', t.tableNo),
+                if (t.customerName.isNotEmpty) kv('Pelanggan', t.customerName),
                 Divider(height: 22),
                 for (final l in t.lines)
                   Padding(

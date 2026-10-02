@@ -1,3 +1,7 @@
+/// Jenis pesanan.
+const orderDineIn = 'Makan di Tempat';
+const orderTakeaway = 'Bawa Pulang';
+
 class MenuItem {
   String id;
   String name;
@@ -45,6 +49,9 @@ class Trx {
   final int subtotal, discount, tax, total, paid, change;
   final String method, note;
   final String branch;
+  final String orderType; // 'Makan di Tempat' / 'Bawa Pulang' ('' = transaksi lama)
+  final String tableNo; // kosong jika bawa pulang
+  final String customerName; // kosong jika bawa pulang / tidak diisi
   bool synced;
   Trx({
     required this.id,
@@ -61,7 +68,20 @@ class Trx {
     required this.note,
     this.synced = false,
     this.branch = '',
+    this.orderType = '',
+    this.tableNo = '',
+    this.customerName = '',
   });
+
+  bool get isTakeaway => orderType == orderTakeaway;
+
+  /// Ringkasan untuk daftar & struk, mis. 'Meja 5 • Budi' atau 'Bawa Pulang'. Kosong untuk transaksi lama.
+  String get orderLabel {
+    if (orderType.isEmpty) return '';
+    if (isTakeaway) return orderTakeaway;
+    final parts = <String>[if (tableNo.isNotEmpty) 'Meja $tableNo' else orderDineIn, if (customerName.isNotEmpty) customerName];
+    return parts.join(' • ');
+  }
 
   int get itemCount => lines.fold(0, (a, l) => a + l.qty);
 
@@ -79,6 +99,9 @@ class Trx {
         'change': change,
         'method': method,
         'note': note,
+        'order_type': orderType,
+        'table_no': tableNo,
+        'customer_name': customerName,
         'lines': lines.map((e) => e.toJson()).toList(),
       };
 
@@ -96,6 +119,9 @@ class Trx {
         change: (j['change'] as num).toInt(),
         method: j['method'] as String,
         note: (j['note'] as String?) ?? '',
+        orderType: (j['order_type'] as String?) ?? '',
+        tableNo: (j['table_no'] as String?) ?? '',
+        customerName: (j['customer_name'] as String?) ?? '',
         synced: true,
       );
 
@@ -114,6 +140,9 @@ class Trx {
         'note': note,
         'synced': synced,
         'branch': branch,
+        'orderType': orderType,
+        'tableNo': tableNo,
+        'customerName': customerName,
       };
 
   factory Trx.fromJson(Map<String, dynamic> j) => Trx(
@@ -131,5 +160,8 @@ class Trx {
         note: j['note'] as String,
         synced: (j['synced'] as bool?) ?? false,
         branch: (j['branch'] as String?) ?? '',
+        orderType: (j['orderType'] as String?) ?? '',
+        tableNo: (j['tableNo'] as String?) ?? '',
+        customerName: (j['customerName'] as String?) ?? '',
       );
 }

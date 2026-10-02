@@ -5,6 +5,7 @@
 2b. Jalankan juga `supabase_update_menu.sql` (menu & harga diatur bos).
 2c. Jalankan juga `supabase_update_cabang_menu.sql` (menu per cabang).
 2d. Jalankan juga `supabase_update_harga_cabang.sql` (harga & foto berbeda tiap cabang, bucket foto `menu-images`, nama resto Bakso TITATI Wonogiri Opik Jon).
+2e. Jalankan juga `supabase_update_meja_pelanggan.sql` (nomor meja, nama pelanggan, makan di tempat / bawa pulang). Jalankan SEBELUM memasang APK yang baru.
 3. **Authentication -> Users -> Add user** untuk 1 bos dan 3 kasir
    (centang *Auto Confirm User*). Contoh: bos@contoh.com, kasir1@contoh.com,
    kasir2@contoh.com, kasir3@contoh.com.
@@ -33,3 +34,4 @@ Catatan:
 - Daftar cabang diambil dari kolom `branch` akun kasir.
 
 - Jika transaksi kasir tidak muncul di laporan bos, jalankan `supabase_perbaikan_transaksi.sql` (aman diulang). Layar Akun kasir menampilkan pesan error bila pengiriman gagal.
+- Di kasir, pilih Makan di Tempat (wajib pilih nomor meja dari dropdown, nama pelanggan diisi manual) atau Bawa Pulang (tanpa meja & nama). Info ini tampil di struk, riwayat transaksi, dan layar bos. Jumlah meja diatur lewat `tableCount` di `lib/config.dart`.

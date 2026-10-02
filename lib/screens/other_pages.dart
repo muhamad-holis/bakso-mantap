@@ -28,7 +28,8 @@ class TransaksiPage extends StatelessWidget {
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptPage(trx: t))),
             leading: cloudEnabled ? Icon(t.synced ? Icons.cloud_done : Icons.cloud_upload_outlined, color: t.synced ? green : Colors.orange) : null,
             title: Text(t.id, style: TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text('${tgl(t.date)} ${jam(t.date)} • ${t.itemCount} item • ${t.method}'),
+            subtitle: Text('${tgl(t.date)} ${jam(t.date)} • ${t.itemCount} item • ${t.method}${t.orderLabel.isEmpty ? '' : '\n${t.orderLabel}'}'),
+            isThreeLine: t.orderLabel.isNotEmpty,
             trailing: Text(rp(t.total), style: TextStyle(fontWeight: FontWeight.w800, color: blue)),
           ),
         );
