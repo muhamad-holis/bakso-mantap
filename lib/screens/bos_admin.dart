@@ -8,6 +8,7 @@ import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../utils.dart';
+import 'bos_expense.dart';
 import 'bos_page.dart';
 
 class BosShell extends StatefulWidget {
@@ -22,12 +23,13 @@ class _BosShellState extends State<BosShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: idx, children: [BosPage(), BosMenuPage(), BosSettingsPage()]),
+      body: IndexedStack(index: idx, children: [BosPage(), BosExpensePage(), BosMenuPage(), BosSettingsPage()]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: idx,
         onDestinationSelected: (i) => setState(() => idx = i),
         destinations: [
           NavigationDestination(icon: Icon(Icons.insights), label: 'Pantau'),
+          NavigationDestination(icon: Icon(Icons.shopping_basket_outlined), label: 'Pengeluaran'),
           NavigationDestination(icon: Icon(Icons.restaurant_menu), label: 'Menu & Harga'),
           NavigationDestination(icon: Icon(Icons.settings), label: 'Pengaturan'),
         ],

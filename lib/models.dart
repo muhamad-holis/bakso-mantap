@@ -258,3 +258,48 @@ class Trx {
         customerName: (j['customerName'] as String?) ?? '',
       );
 }
+
+/// Format tanggal untuk kolom `date` di Supabase: yyyy-MM-dd.
+String dbDate(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+const expenseCategories = ['Bahan baku', 'Gas & listrik', 'Gaji', 'Sewa', 'Lainnya'];
+
+/// Pengeluaran yang dicatat bos (mis. belanja bahan). branch kosong = umum (semua cabang).
+class Expense {
+  final String id;
+  final DateTime date; // hanya tanggal (jam 00:00)
+  final String branch;
+  final String category;
+  final String name;
+  final int amount;
+  final String note;
+  Expense({
+    required this.id,
+    required this.date,
+    required this.branch,
+    required this.category,
+    required this.name,
+    required this.amount,
+    this.note = '',
+  });
+
+  Map<String, dynamic> toCloud() => {
+        'id': id,
+        'date': dbDate(date),
+        'branch': branch,
+        'category': category,
+        'name': name,
+        'amount': amount,
+        'note': note,
+      };
+
+  factory Expense.fromCloud(Map<String, dynamic> j) => Expense(
+        id: j['id'] as String,
+        date: DateTime.parse(j['date'] as String),
+        branch: (j['branch'] as String?) ?? '',
+        category: (j['category'] as String?) ?? 'Lainnya',
+        name: (j['name'] as String?) ?? '',
+        amount: (j['amount'] as num).toInt(),
+        note: (j['note'] as String?) ?? '',
+      );
+}

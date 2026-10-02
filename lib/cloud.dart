@@ -1,8 +1,12 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase, SupabaseClient;
 
 SupabaseClient get sb => Supabase.instance.client;
+
+/// Dinaikkan setiap kali bos menyimpan/menghapus pengeluaran, supaya layar Pantau langsung memuat ulang laba.
+final expenseChanged = ValueNotifier<int>(0);
 
 /// Ambil role & nama akun. Hasil disimpan lokal supaya kasir tetap bisa
 /// membuka aplikasi saat internet mati.

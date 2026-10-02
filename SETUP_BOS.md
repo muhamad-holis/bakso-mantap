@@ -7,6 +7,7 @@
 2d. Jalankan juga `supabase_update_harga_cabang.sql` (harga & foto berbeda tiap cabang, bucket foto `menu-images`, nama resto Bakso TITATI Wonogiri Opik Jon).
 2e. Jalankan juga `supabase_update_meja_pelanggan.sql` (nomor meja, nama pelanggan, makan di tempat / bawa pulang). Jalankan SEBELUM memasang APK yang baru.
 2f. Jalankan juga `supabase_update_shift.sql` (tutup kasir/shift: kas awal, kas akhir, selisih). Jalankan SEBELUM memasang APK yang baru.
+2g. Jalankan juga `supabase_update_pengeluaran.sql` (pengeluaran harian & laba untuk bos). Jalankan SEBELUM memasang APK yang baru.
 3. **Authentication -> Users -> Add user** untuk 1 bos dan 3 kasir
    (centang *Auto Confirm User*). Contoh: bos@contoh.com, kasir1@contoh.com,
    kasir2@contoh.com, kasir3@contoh.com.
@@ -39,3 +40,4 @@ Catatan:
 - Jika Akun kasir menampilkan error `Could not find the 'customer_name' column ... PGRST204`, jalankan `supabase_perbaikan_kolom_meja.sql` (aman diulang). Sebelum itu dijalankan, aplikasi tetap mengirim transaksi dan menyimpan info meja/pelanggan di catatan.
 - Catatan per item: di keranjang, ketuk 'Tambah catatan' pada menu yang dipesan (mis. 'Tanpa sambal'). Jika menu dipesan lebih dari 1 porsi, kasir memilih catatan berlaku untuk berapa porsi; menu yang sama dengan catatan berbeda jadi baris terpisah. Catatan tampil di struk, riwayat transaksi, dan layar bos. Catatan di halaman pembayaran kini khusus catatan transaksi (umum).
 - Shift kasir (tab Akun / Pengaturan): Buka Shift isi kas awal -> berjualan -> Tutup Shift isi kas akhir (hasil hitung uang). Selisih = kas akhir - (kas awal + total transaksi Tunai sejak shift dibuka). Shift yang ditutup dikirim ke bos (bagian 'Tutup shift terbaru' di layar Pantau); jika tabel `shifts` belum dibuat, riwayat tetap aman di HP dan dikirim otomatis setelah SQL dijalankan.
+- Pengeluaran & laba (hanya bos): tab Pengeluaran untuk mencatat belanja bahan, gas/listrik, gaji, dll (per tanggal & cabang, atau Umum untuk semua cabang). Di layar Pantau, kartu Laba = Omzet - Pajak (PPN) terkumpul - Pengeluaran, lengkap dengan laba per hari (7/30 hari) dan laba per cabang. Kasir tidak bisa melihat data pengeluaran.

@@ -17,6 +17,8 @@ class _BosPageState extends State<BosPage> {
   String period = 'Hari ini';
   String branch = 'Semua Cabang';
   final periods = ['Hari ini', 'Kemarin', '7 Hari', '30 Hari'];
+  List<Expense> expenses = []; // pengeluaran ~40 hari terakhir
+  String? expenseError; // pesan jika data pengeluaran gagal dimuat (mis. SQL belum dijalankan)
   List<Shift> shifts = []; // shift yang sudah ditutup kasir
   List<String> knownBranches = []; // cabang dari akun kasir, tampil walau belum ada transaksi
 
@@ -25,6 +27,30 @@ class _BosPageState extends State<BosPage> {
     super.initState();
     _loadBranches();
     _loadShifts();
+    _loadExpenses();
+    expenseChanged.addListener(_loadExpenses);
+  }
+
+  @override
+  void dispose() {
+    expenseChanged.removeListener(_loadExpenses);
+    super.dispose();
+  }
+
+  Future<void> _loadExpenses() async {
+    try {
+      final from = DateTime.now().subtract(Duration(days: 40));
+      final r = await sb.from('expenses').select().gte('date', dbDate(from)).order('date', ascending: false).limit(2000);
+      final list = [for (final e in r) Expense.fromCloud(Map<String, dynamic>.from(e as Map))];
+      if (mounted) {
+        setState(() {
+          expenses = list;
+          expenseError = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => expenseError = '$e');
+    }
   }
 
   Future<void> _loadShifts() async {
@@ -61,6 +87,7 @@ class _BosPageState extends State<BosPage> {
       }
       first = false;
       _loadShifts();
+      _loadExpenses();
       await Future.delayed(const Duration(seconds: 10));
     }
   }
@@ -71,6 +98,80 @@ class _BosPageState extends State<BosPage> {
     final n = DateTime.now();
     return DateTime(n.year, n.month, n.day);
   }
+
+  DateTime get _from {
+    final t = _today;
+    switch (period) {
+      case 'Kemarin':
+        return t.subtract(Duration(days: 1));
+      case '7 Hari':
+        return t.subtract(Duration(days: 6));
+      case '30 Hari':
+        return t.subtract(Duration(days: 29));
+      default:
+        return t;
+    }
+  }
+
+  List<Expense> _filterExp(List<Expense> all) {
+    final from = _from;
+    final to = period == 'Kemarin' ? _today : null;
+    return all
+        .where((e) => !e.date.isBefore(from) && (to == null || e.date.isBefore(to)) && (branch == 'Semua Cabang' || e.branch == branch))
+        .toList();
+  }
+
+  bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+
+  Widget _labaCard(int omzet, int pajak, int pengeluaran) {
+    final laba = omzet - pajak - pengeluaran;
+    Widget r(String a, String b, {bool bold = false, Color? color}) => Padding(
+          padding: EdgeInsets.symmetric(vertical: 3),
+          child: Row(children: [
+            Expanded(child: Text(a, style: TextStyle(color: color, fontWeight: bold ? FontWeight.w800 : FontWeight.w500))),
+            Text(b, style: TextStyle(color: color, fontWeight: bold ? FontWeight.w800 : FontWeight.w600, fontSize: bold ? 20 : 14)),
+          ]),
+        );
+    return Container(
+      padding: EdgeInsets.all(14),
+      decoration: cardDeco(),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Laba $period${branch == 'Semua Cabang' ? '' : ' • $branch'}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+        SizedBox(height: 6),
+        r('Omzet', rp(omzet)),
+        r('Pajak (PPN) terkumpul', '-${rp(pajak)}'),
+        r('Pengeluaran', '-${rp(pengeluaran)}'),
+        Divider(height: 16),
+        r('Laba', rp(laba), bold: true, color: laba >= 0 ? green : Color(0xFFC62828)),
+        if (expenseError != null)
+          Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('Data pengeluaran belum bisa dimuat, jadi laba di atas belum memperhitungkannya. Jalankan supabase_update_pengeluaran.sql di Supabase.',
+                style: TextStyle(color: Colors.orange[800], fontSize: 12)),
+          )
+        else if (pengeluaran == 0)
+          Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('Belum ada pengeluaran dicatat di periode ini. Catat belanja di tab Pengeluaran.', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+          ),
+      ]),
+    );
+  }
+
+  Widget _rowSub(String a, String sub, String b, Color color) => Container(
+        margin: EdgeInsets.only(bottom: 6),
+        padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: cardDeco(),
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(a, style: TextStyle(fontWeight: FontWeight.w600)),
+              Text(sub, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+            ]),
+          ),
+          Text(b, style: TextStyle(fontWeight: FontWeight.w800, color: color)),
+        ]),
+      );
 
   List<Trx> _filter(List<Trx> all) {
     final today = _today;
@@ -184,6 +285,39 @@ class _BosPageState extends State<BosPage> {
               }
               final top = byMenu.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
 
+              final exp = _filterExp(expenses);
+              final pengeluaran = exp.fold<int>(0, (a, e) => a + e.amount);
+              final pajak = list.fold<int>(0, (a, t) => a + t.tax);
+              final taxByBranch = <String, int>{};
+              final expByBranch = <String, int>{};
+              for (final t in list) {
+                final bn = t.branch.isEmpty ? '(tanpa cabang)' : t.branch;
+                taxByBranch[bn] = (taxByBranch[bn] ?? 0) + t.tax;
+              }
+              for (final e in exp) {
+                final bn = e.branch.isEmpty ? 'Umum (semua cabang)' : e.branch;
+                expByBranch[bn] = (expByBranch[bn] ?? 0) + e.amount;
+              }
+              final labaBranches = {...byBranch.keys, ...expByBranch.keys}.toList();
+              final labaOf = {for (final k in labaBranches) k: (byBranch[k] ?? 0) - (taxByBranch[k] ?? 0) - (expByBranch[k] ?? 0)};
+              labaBranches.sort((a, b) => labaOf[b]!.compareTo(labaOf[a]!));
+              final expByCat = <String, int>{};
+              for (final e in exp) {
+                expByCat[e.category] = (expByCat[e.category] ?? 0) + e.amount;
+              }
+              final dayCount = period == '7 Hari' ? 7 : (period == '30 Hari' ? 30 : 0);
+              final perHari = <Widget>[];
+              for (var i = 0; i < dayCount; i++) {
+                final d = DateTime(_today.year, _today.month, _today.day - i);
+                final dt = list.where((t) => _sameDay(t.date, d)).toList();
+                final de = exp.where((e) => _sameDay(e.date, d)).toList();
+                final o = dt.fold<int>(0, (a, t) => a + t.total);
+                final tx = dt.fold<int>(0, (a, t) => a + t.tax);
+                final ex = de.fold<int>(0, (a, e) => a + e.amount);
+                final l = o - tx - ex;
+                perHari.add(_rowSub(i == 0 ? '${tgl(d)} (hari ini)' : tgl(d), 'Omzet ${rp(o)} • Pengeluaran ${rp(ex)}', rp(l), l >= 0 ? green : Color(0xFFC62828)));
+              }
+
               final shiftList = shifts.where((x) => branch == 'Semua Cabang' || x.branch == branch).toList();
 
               String? kemarin;
@@ -246,12 +380,23 @@ class _BosPageState extends State<BosPage> {
                     if (kemarin != null) Text(kemarin, style: TextStyle(color: Color(0xFFB8C7DE), fontSize: 12)),
                   ]),
                 ),
+                SizedBox(height: 10),
+                _labaCard(omzet, pajak, pengeluaran),
                 SizedBox(height: 6),
                 Row(children: [_stat('Transaksi', '${list.length}'), _stat('Item terjual', '$items')]),
                 Row(children: [_stat('Rata-rata / transaksi', rp(avg)), _stat('Pajak terkumpul', rp(list.fold<int>(0, (a, t) => a + t.tax)))]),
-                if (branch == 'Semua Cabang' && byBranch.length > 1) ...[
-                  _title('Omzet per cabang'),
-                  for (final e in (byBranch.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))) _row(e.key, rp(e.value)),
+                if (dayCount > 0) ...[
+                  _title('Laba per hari'),
+                  ...perHari,
+                ],
+                if (branch == 'Semua Cabang' && labaBranches.length > 1) ...[
+                  _title('Laba per cabang'),
+                  for (final k in labaBranches)
+                    _rowSub(k, 'Omzet ${rp(byBranch[k] ?? 0)} • Pengeluaran ${rp(expByBranch[k] ?? 0)}', rp(labaOf[k]!), labaOf[k]! >= 0 ? green : Color(0xFFC62828)),
+                ],
+                if (expByCat.isNotEmpty) ...[
+                  _title('Pengeluaran per kategori'),
+                  for (final e in (expByCat.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))) _row(e.key, rp(e.value)),
                 ],
                 _title('Metode pembayaran'),
                 if (byMethod.isEmpty) Text('Belum ada data', style: TextStyle(color: Colors.grey)),
