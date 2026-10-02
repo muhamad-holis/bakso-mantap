@@ -17,6 +17,24 @@ class _BosPageState extends State<BosPage> {
   String period = 'Hari ini';
   String branch = 'Semua Cabang';
   final periods = ['Hari ini', 'Kemarin', '7 Hari', '30 Hari'];
+  List<String> knownBranches = []; // cabang dari akun kasir, tampil walau belum ada transaksi
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBranches();
+  }
+
+  Future<void> _loadBranches() async {
+    try {
+      final r = await sb.from('profiles').select('branch');
+      final set = <String>{
+        for (final e in r)
+          if ((e['branch'] as String?)?.isNotEmpty ?? false) e['branch'] as String,
+      };
+      if (mounted) setState(() => knownBranches = set.toList()..sort());
+    } catch (_) {}
+  }
 
   // 1000 transaksi terbaru, update otomatis (realtime)
   late final Stream<List<Map<String, dynamic>>> stream =
@@ -122,7 +140,7 @@ class _BosPageState extends State<BosPage> {
               if (!snap.hasData) return Center(child: CircularProgressIndicator());
               final all = snap.data!.map((e) => Trx.fromCloud(e)).toList();
               final list = _filter(all);
-              final branches = {...all.map((t) => t.branch).where((b) => b.isNotEmpty)}.toList()..sort();
+              final branches = {...knownBranches, ...all.map((t) => t.branch).where((b) => b.isNotEmpty)}.toList()..sort();
 
               final omzet = list.fold<int>(0, (a, t) => a + t.total);
               final items = list.fold<int>(0, (a, t) => a + t.itemCount);
