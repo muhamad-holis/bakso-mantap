@@ -17,6 +17,7 @@ class AppState extends ChangeNotifier {
   String kasir = 'admin';
   String branch = '';
   int taxPercent = 11;
+  int tableCount = defaultTableCount; // jumlah meja cabang ini (diatur bos)
   // pengaturan pembayaran dari bos (sinkron ke semua cabang)
   String qrisUrl = '';
   String bankName = '';
@@ -36,6 +37,7 @@ class AppState extends ChangeNotifier {
     storeName = _p.getString('storeName') ?? storeName;
     kasir = _p.getString('kasir') ?? kasir;
     taxPercent = _p.getInt('tax') ?? taxPercent;
+    tableCount = _p.getInt('tableCount') ?? defaultTableCount;
     qrisUrl = _p.getString('qrisUrl') ?? '';
     bankName = _p.getString('bankName') ?? '';
     bankAccount = _p.getString('bankAccount') ?? '';
@@ -74,6 +76,7 @@ class AppState extends ChangeNotifier {
     _p.setString('storeName', storeName);
     _p.setString('kasir', kasir);
     _p.setInt('tax', taxPercent);
+    _p.setInt('tableCount', tableCount);
     _p.setString('qrisUrl', qrisUrl);
     _p.setString('bankName', bankName);
     _p.setString('bankAccount', bankAccount);
@@ -332,8 +335,16 @@ class AppState extends ChangeNotifier {
   Future<void> pullConfig() async {
     if (!cloudEnabled || sb.auth.currentSession == null) return;
     try {
-      String sig() => '${jsonEncode(menus.map((e) => e.toJson()).toList())}|$taxPercent|$storeName|$qrisUrl|$bankName|$bankAccount|$bankHolder';
+      String sig() => '${jsonEncode(menus.map((e) => e.toJson()).toList())}|$taxPercent|$tableCount|$storeName|$qrisUrl|$bankName|$bankAccount|$bankHolder';
       final before = sig();
+
+      // jumlah meja khusus cabang HP ini (diatur bos)
+      if (branch.isNotEmpty) {
+        try {
+          final b = await sb.from('branches').select('table_count').eq('name', branch).maybeSingle();
+          if (b != null) tableCount = (b['table_count'] as num).toInt();
+        } catch (_) {}
+      }
 
       // menu, harga, dan foto khusus cabang HP ini
       final rows = await sb

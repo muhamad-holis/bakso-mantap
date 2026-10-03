@@ -10,6 +10,7 @@ import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../utils.dart';
+import 'bos_branch.dart';
 import 'bos_expense.dart';
 import 'bos_page.dart';
 
@@ -100,12 +101,7 @@ class _BosMenuPageState extends State<BosMenuPage> {
 
   Future<void> _loadBranches() async {
     try {
-      final r = await sb.from('profiles').select('branch');
-      final set = <String>{
-        for (final e in r)
-          if ((e['branch'] as String?)?.isNotEmpty ?? false) e['branch'] as String,
-      };
-      final list = set.toList()..sort();
+      final list = await loadBranchNames();
       if (!mounted) return;
       setState(() {
         branches = list;
@@ -701,6 +697,23 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
                     onPressed: saving ? null : _save,
                     child: Text('Simpan untuk Semua Cabang'),
                   ),
+                ),
+              ]),
+            ),
+            SizedBox(height: 12),
+            Container(
+              padding: EdgeInsets.all(14),
+              decoration: cardDeco(),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Cabang', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                SizedBox(height: 2),
+                Text('Buka cabang baru, atur jumlah meja, dan tetapkan akun kasir ke cabang.', style: TextStyle(color: Colors.grey[700], fontSize: 12)),
+                SizedBox(height: 12),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(minimumSize: Size.fromHeight(46)),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BosBranchPage())),
+                  icon: Icon(Icons.storefront),
+                  label: Text('Kelola Cabang & Akun Kasir'),
                 ),
               ]),
             ),

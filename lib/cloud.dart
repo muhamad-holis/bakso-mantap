@@ -8,6 +8,26 @@ SupabaseClient get sb => Supabase.instance.client;
 /// Dinaikkan setiap kali bos menyimpan/menghapus pengeluaran, supaya layar Pantau langsung memuat ulang laba.
 final expenseChanged = ValueNotifier<int>(0);
 
+/// Daftar nama cabang: gabungan tabel `branches` dan cabang pada akun kasir (urut abjad).
+Future<List<String>> loadBranchNames() async {
+  final set = <String>{};
+  try {
+    final r = await sb.from('branches').select('name');
+    for (final e in r) {
+      final n = e['name'] as String?;
+      if (n != null && n.isNotEmpty) set.add(n);
+    }
+  } catch (_) {}
+  try {
+    final r = await sb.from('profiles').select('branch');
+    for (final e in r) {
+      final n = e['branch'] as String?;
+      if (n != null && n.isNotEmpty) set.add(n);
+    }
+  } catch (_) {}
+  return set.toList()..sort();
+}
+
 /// Ambil role & nama akun. Hasil disimpan lokal supaya kasir tetap bisa
 /// membuka aplikasi saat internet mati.
 Future<Map<String, dynamic>?> fetchProfile() async {

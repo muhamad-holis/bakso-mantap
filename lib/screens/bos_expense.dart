@@ -45,12 +45,8 @@ class _BosExpensePageState extends State<BosExpensePage> {
 
   Future<void> _loadBranches() async {
     try {
-      final r = await sb.from('profiles').select('branch');
-      final set = <String>{
-        for (final e in r)
-          if ((e['branch'] as String?)?.isNotEmpty ?? false) e['branch'] as String,
-      };
-      if (mounted) setState(() => branches = set.toList()..sort());
+      final list = await loadBranchNames();
+      if (mounted) setState(() => branches = list);
     } catch (_) {}
   }
 

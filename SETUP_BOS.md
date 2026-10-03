@@ -8,6 +8,7 @@
 2e. Jalankan juga `supabase_update_meja_pelanggan.sql` (nomor meja, nama pelanggan, makan di tempat / bawa pulang). Jalankan SEBELUM memasang APK yang baru.
 2f. Jalankan juga `supabase_update_shift.sql` (tutup kasir/shift: kas awal, kas akhir, selisih). Jalankan SEBELUM memasang APK yang baru.
 2g. Jalankan juga `supabase_update_pengeluaran.sql` (pengeluaran harian & laba untuk bos). Jalankan SEBELUM memasang APK yang baru.
+2h. Jalankan juga `supabase_update_cabang.sql` (buka cabang baru dari aplikasi bos, jumlah meja per cabang). Jalankan SEBELUM memasang APK yang baru.
 3. **Authentication -> Users -> Add user** untuk 1 bos dan 3 kasir
    (centang *Auto Confirm User*). Contoh: bos@contoh.com, kasir1@contoh.com,
    kasir2@contoh.com, kasir3@contoh.com.
@@ -43,3 +44,10 @@ Catatan:
 - Pengeluaran & laba (hanya bos): tab Pengeluaran untuk mencatat belanja bahan, gas/listrik, gaji, dll (per tanggal & cabang, atau Umum untuk semua cabang). Di layar Pantau, kartu Laba = Omzet - Pajak (PPN) terkumpul - Pengeluaran, lengkap dengan laba per hari (7/30 hari) dan laba per cabang. Kasir tidak bisa melihat data pengeluaran.
 - Pengaturan pembayaran (hanya bos): di tab Pengaturan, unggah gambar QRIS dan isi nama bank, nomor rekening, atas nama, lalu tekan 'Simpan Pembayaran untuk Semua Cabang'. HP kasir semua cabang ikut berubah dalam +-30 detik. Saat kasir memilih metode QRIS, gambar QRIS tampil (ketuk untuk memperbesar); saat memilih Transfer, nomor rekening tampil dengan tombol salin. Tidak perlu SQL baru: memakai tabel `app_settings` dan bucket `menu-images` yang sudah ada (folder `pembayaran/`).
 - Ikon aplikasi: file ikon ada di folder `android_res/` (ikon adaptif + ikon biasa) dan sumbernya di `branding/app_icon.png`. GitHub Actions menyalinnya otomatis ke proyek Android saat build, jadi tidak perlu langkah manual. Untuk mengganti ikon, ganti file di `android_res/mipmap-*/`.
+
+## Cara membuka cabang baru
+1. Aplikasi bos > tab Pengaturan > **Kelola Cabang & Akun Kasir** > **Buka Cabang Baru**. Isi nama cabang, jumlah meja, dan (opsional) salin menu & harga dari cabang lain.
+2. Buat akun kasir di Supabase: Authentication > Users > Add user (centang *Auto Confirm User*). Pendaftaran mandiri di Supabase sebaiknya tetap dimatikan agar orang luar tidak bisa membuat akun sendiri.
+3. Kembali ke Kelola Cabang. Di bagian **Akun Kasir**, ketuk **Tetapkan** pada akun baru lalu pilih cabangnya (nama kasir bisa diubah lewat SQL: `update public.profiles set name='Andi' where id=(select id from auth.users where email='...')`).
+4. Atur harga & foto di tab **Menu & Harga** (pilih cabang baru). Pasang APK di HP kasir, login, selesai.
+- Mengubah jumlah meja: Kelola Cabang > titik tiga pada cabang > Ubah jumlah meja (HP kasir ikut berubah +-30 detik).

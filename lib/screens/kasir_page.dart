@@ -339,7 +339,7 @@ class _CartPanelState extends State<CartPanel> {
               SizedBox(
                 width: 118,
                 child: DropdownButtonFormField<String>(
-                  value: s.tableNo.isEmpty ? null : s.tableNo,
+                  value: (s.tableNo.isEmpty || (int.tryParse(s.tableNo) ?? 0) > s.tableCount) ? null : s.tableNo,
                   isExpanded: true,
                   decoration: InputDecoration(
                     labelText: 'No. Meja',
@@ -347,7 +347,7 @@ class _CartPanelState extends State<CartPanel> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   hint: Text('Pilih'),
-                  items: [for (var i = 1; i <= tableCount; i++) DropdownMenuItem(value: '$i', child: Text('Meja $i'))],
+                  items: [for (var i = 1; i <= s.tableCount; i++) DropdownMenuItem(value: '$i', child: Text('Meja $i'))],
                   onChanged: (v) => s.setTableNo(v ?? ''),
                 ),
               ),
