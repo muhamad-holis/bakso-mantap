@@ -51,3 +51,4 @@ Catatan:
 3. Kembali ke Kelola Cabang. Di bagian **Akun Kasir**, ketuk **Tetapkan** pada akun baru lalu pilih cabangnya (nama kasir bisa diubah lewat SQL: `update public.profiles set name='Andi' where id=(select id from auth.users where email='...')`).
 4. Atur harga & foto di tab **Menu & Harga** (pilih cabang baru). Pasang APK di HP kasir, login, selesai.
 - Mengubah jumlah meja: Kelola Cabang > titik tiga pada cabang > Ubah jumlah meja (HP kasir ikut berubah +-30 detik).
+- Hapus riwayat closing (hanya bos): di tab Pantau, bagian 'Tutup shift terbaru' ada ikon tempat sampah per catatan dan tombol 'Bersihkan' (lebih dari 7 hari / 30 hari / semua, mengikuti cabang yang dipilih). Hanya catatan closing yang terhapus, transaksi dan omzet tidak berubah. Jalankan sekali SQL supabase_update_hapus_shift.sql. HP kasir membuang sendiri riwayat shift yang sudah terkirim dan lebih dari 30 hari; kasir tidak punya tombol hapus.

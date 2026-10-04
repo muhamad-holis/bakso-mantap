@@ -61,6 +61,86 @@ class _BosPageState extends State<BosPage> {
     } catch (_) {}
   }
 
+  void _shiftToast(String t) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+
+  Future<void> _deleteShift(Shift x) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text('Hapus catatan closing?'),
+        content: Text('${x.kasir.isEmpty ? '-' : x.kasir}${x.branch.isEmpty ? '' : ' • ${x.branch}'}\n${tgl(x.openedAt)} ${jam(x.openedAt)}–${jam(x.closedAt!)}\n\nCatatan kas awal, kas akhir, dan selisih ini hilang permanen. Transaksi dan omzet tidak berubah.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: Text('Hapus')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final r = await sb.from('shifts').delete().eq('id', x.id).select('id');
+      if (r.isEmpty) {
+        _shiftToast('Tidak ada yang terhapus. Jalankan dulu SQL supabase_update_hapus_shift.sql di Supabase.');
+        return;
+      }
+      if (mounted) setState(() => shifts.removeWhere((e) => e.id == x.id));
+      _shiftToast('Catatan closing dihapus');
+    } catch (e) {
+      _shiftToast('Gagal menghapus: $e');
+    }
+  }
+
+  /// Hapus riwayat closing lama sesuai cabang yang sedang dipilih (Semua Cabang = semua).
+  Future<void> _cleanShifts() async {
+    final scope = branch == 'Semua Cabang' ? 'semua cabang' : branch;
+    final opt = await showDialog<int>(
+      context: context,
+      builder: (d) => SimpleDialog(
+        title: Text('Bersihkan riwayat closing ($scope)'),
+        children: [
+          SimpleDialogOption(onPressed: () => Navigator.pop(d, 7), child: Text('Lebih dari 7 hari')),
+          SimpleDialogOption(onPressed: () => Navigator.pop(d, 30), child: Text('Lebih dari 30 hari')),
+          SimpleDialogOption(onPressed: () => Navigator.pop(d, 0), child: Text('Semua riwayat')),
+        ],
+      ),
+    );
+    if (opt == null) return;
+    final cutoff = (opt == 0 ? DateTime.now().add(Duration(days: 1)) : DateTime.now().subtract(Duration(days: opt))).toUtc().toIso8601String();
+    final label = opt == 0 ? 'semua riwayat' : 'lebih dari $opt hari';
+    try {
+      var qFind = sb.from('shifts').select('id').lt('closed_at', cutoff);
+      if (branch != 'Semua Cabang') qFind = qFind.eq('branch', branch);
+      final found = await qFind;
+      if (!mounted) return;
+      if (found.isEmpty) {
+        _shiftToast('Tidak ada catatan closing ($label) di $scope');
+        return;
+      }
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (d) => AlertDialog(
+          title: Text('Hapus ${found.length}${found.length >= 1000 ? '+' : ''} catatan closing?'),
+          content: Text('$scope • $label\n\nHilang permanen. Transaksi dan omzet tidak berubah.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Batal')),
+            FilledButton(onPressed: () => Navigator.pop(d, true), child: Text('Hapus')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      var qDel = sb.from('shifts').delete().lt('closed_at', cutoff);
+      if (branch != 'Semua Cabang') qDel = qDel.eq('branch', branch);
+      final del = await qDel.select('id');
+      if (del.isEmpty) {
+        _shiftToast('Tidak ada yang terhapus. Jalankan dulu SQL supabase_update_hapus_shift.sql di Supabase.');
+        return;
+      }
+      _shiftToast('${del.length} catatan closing dihapus');
+      _loadShifts();
+    } catch (e) {
+      _shiftToast('Gagal membersihkan: $e');
+    }
+  }
+
   Future<void> _loadBranches() async {
     try {
       final list = await loadBranchNames();
@@ -400,7 +480,17 @@ class _BosPageState extends State<BosPage> {
                 _title('Menu terlaris'),
                 if (top.isEmpty) Text('Belum ada data', style: TextStyle(color: Colors.grey)),
                 for (final e in top.take(5)) _row(e.key, '${e.value} terjual'),
-                _title('Tutup shift terbaru'),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(4, 16, 0, 4),
+                  child: Row(children: [
+                    Expanded(child: Text('Tutup shift terbaru', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+                    TextButton.icon(
+                      onPressed: _cleanShifts,
+                      icon: Icon(Icons.cleaning_services_outlined, size: 18),
+                      label: Text('Bersihkan'),
+                    ),
+                  ]),
+                ),
                 if (shiftList.isEmpty) Text('Belum ada data', style: TextStyle(color: Colors.grey)),
                 for (final x in shiftList.take(10))
                   Container(
@@ -410,7 +500,15 @@ class _BosPageState extends State<BosPage> {
                       title: Text('${x.kasir.isEmpty ? '-' : x.kasir}${x.branch.isEmpty ? '' : ' • ${x.branch}'}', style: TextStyle(fontWeight: FontWeight.w700)),
                       subtitle: Text('${tgl(x.openedAt)} ${jam(x.openedAt)}–${jam(x.closedAt!)}\nKas awal ${rp(x.openingCash)} • Tunai sistem ${rp(x.cashSales)}\nKas akhir ${rp(x.closingCash)}${x.note.isEmpty ? '' : '\nCatatan: ${x.note}'}'),
                       isThreeLine: true,
-                      trailing: Text(selisihText(x.difference), style: TextStyle(fontWeight: FontWeight.w800, color: x.difference == 0 ? green : Color(0xFFC62828))),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text(selisihText(x.difference), style: TextStyle(fontWeight: FontWeight.w800, color: x.difference == 0 ? green : Color(0xFFC62828))),
+                        IconButton(
+                          tooltip: 'Hapus catatan ini',
+                          visualDensity: VisualDensity.compact,
+                          icon: Icon(Icons.delete_outline, size: 20, color: Colors.grey[700]),
+                          onPressed: () => _deleteShift(x),
+                        ),
+                      ]),
                     ),
                   ),
                 _title('Transaksi terbaru'),

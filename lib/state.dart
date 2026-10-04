@@ -55,6 +55,16 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       shifts = [];
     }
+    pruneShifts();
+  }
+
+  /// Riwayat shift di HP kasir yang sudah terkirim ke bos dan lebih dari 30 hari dibuang otomatis
+  /// supaya tidak menumpuk. Shift yang belum terkirim tidak pernah dihapus.
+  bool pruneShifts() {
+    final cut = DateTime.now().subtract(const Duration(days: 30));
+    final before = shifts.length;
+    shifts.removeWhere((x) => !x.isOpen && x.synced && x.closedAt!.isBefore(cut));
+    return shifts.length != before;
   }
 
   List<MenuItem> _defaultMenus() => [
@@ -462,6 +472,7 @@ class AppState extends ChangeNotifier {
           break;
         }
       }
+      pruneShifts();
       _save();
       notifyListeners();
     } finally {
