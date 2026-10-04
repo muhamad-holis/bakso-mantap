@@ -506,7 +506,10 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
   late final TextEditingController bankName;
   late final TextEditingController bankAcc;
   late final TextEditingController bankHolder;
-  String qrisUrl = '';
+  String qrisUrl = ''; // QRIS cabang yang sedang dipilih
+  Map<String, String> qrisMap = {}; // nama cabang -> URL QRIS (app_settings: qris_url@<cabang>)
+  List<String> qrisBranches = [];
+  String? qrisBranch;
   bool uploading = false;
   bool saving = false;
 
@@ -519,7 +522,7 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
     bankName = TextEditingController(text: s.bankName);
     bankAcc = TextEditingController(text: s.bankAccount);
     bankHolder = TextEditingController(text: s.bankHolder);
-    qrisUrl = s.qrisUrl;
+    _loadQris();
     s.pullConfig().then((_) {
       if (!mounted) return;
       store.text = s.storeName;
@@ -527,7 +530,6 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
       bankName.text = s.bankName;
       bankAcc.text = s.bankAccount;
       bankHolder.text = s.bankHolder;
-      setState(() => qrisUrl = s.qrisUrl);
     });
   }
 
@@ -563,6 +565,11 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
 
   /// Pilih gambar QRIS dari galeri dan unggah ke Supabase Storage (folder pembayaran/).
   Future<void> _pickQris() async {
+    final b = qrisBranch;
+    if (b == null) {
+      _toast('Pilih cabang dulu');
+      return;
+    }
     try {
       final f = await ImagePicker().pickImage(source: ImageSource.gallery);
       if (f == null) return;
@@ -576,12 +583,73 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
             fileOptions: FileOptions(contentType: png ? 'image/png' : 'image/jpeg'),
           );
       final url = sb.storage.from('menu-images').getPublicUrl(path);
-      if (mounted) setState(() => qrisUrl = url);
-      _toast('Gambar QRIS terunggah. Tekan "Simpan Pembayaran" agar berlaku di semua cabang.');
+      await sb.from('app_settings').upsert({'key': 'qris_url@$b', 'value': url});
+      if (mounted) {
+        setState(() {
+          qrisMap[b] = url;
+          if (qrisBranch == b) qrisUrl = url;
+        });
+      }
+      _toast('QRIS cabang $b tersimpan. HP kasir cabang itu ikut berubah dalam ±30 detik');
     } catch (e) {
       if (mounted) _toast('Gagal mengunggah gambar: $e');
     }
     if (mounted) setState(() => uploading = false);
+  }
+
+  Future<void> _loadQris() async {
+    try {
+      final names = await loadBranchNames();
+      final rows = await sb.from('app_settings').select().like('key', 'qris_url@%');
+      final map = <String, String>{};
+      for (final r in rows) {
+        final k = r['key'] as String;
+        map[k.substring('qris_url@'.length)] = (r['value'] as String?) ?? '';
+      }
+      if (!mounted) return;
+      setState(() {
+        qrisBranches = names;
+        qrisMap = map;
+        if (qrisBranch == null || !names.contains(qrisBranch)) qrisBranch = names.isEmpty ? null : names.first;
+        qrisUrl = qrisMap[qrisBranch ?? ''] ?? '';
+      });
+    } catch (_) {}
+  }
+
+  void _selectQrisBranch(String b) {
+    setState(() {
+      qrisBranch = b;
+      qrisUrl = qrisMap[b] ?? '';
+    });
+  }
+
+  Future<void> _deleteQris() async {
+    final b = qrisBranch;
+    if (b == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text('Hapus QRIS $b?'),
+        content: Text('Kasir cabang ini tidak akan melihat QRIS sampai Anda mengunggah yang baru.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: Text('Hapus')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await sb.from('app_settings').delete().eq('key', 'qris_url@$b');
+      if (mounted) {
+        setState(() {
+          qrisMap.remove(b);
+          if (qrisBranch == b) qrisUrl = '';
+        });
+      }
+      _toast('QRIS cabang $b dihapus');
+    } catch (e) {
+      if (mounted) _toast('Gagal menghapus: $e');
+    }
   }
 
   Future<void> _savePay() async {
@@ -590,12 +658,11 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
     setState(() => saving = true);
     try {
       await sb.from('app_settings').upsert([
-        {'key': 'qris_url', 'value': qrisUrl},
         {'key': 'bank_name', 'value': bn},
         {'key': 'bank_account', 'value': ba},
         {'key': 'bank_holder', 'value': bh},
       ]);
-      s.savePayment(qrisUrl, bn, ba, bh);
+      s.savePayment(s.qrisUrl, bn, ba, bh);
       if (mounted) _toast('Tersimpan. HP kasir semua cabang ikut berubah dalam ±30 detik');
     } catch (e) {
       if (mounted) _toast('Gagal menyimpan: $e');
@@ -610,9 +677,23 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Pembayaran', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         SizedBox(height: 2),
-        Text('Tampil di HP kasir semua cabang saat memilih QRIS atau Transfer.', style: TextStyle(color: Colors.grey[700], fontSize: 12)),
+        Text('QRIS diatur per cabang. Transfer bank berlaku di semua cabang.', style: TextStyle(color: Colors.grey[700], fontSize: 12)),
         SizedBox(height: 14),
-        Text('Gambar QRIS', style: TextStyle(fontWeight: FontWeight.w700)),
+        Text('Gambar QRIS per cabang', style: TextStyle(fontWeight: FontWeight.w700)),
+        SizedBox(height: 8),
+        if (qrisBranches.isEmpty)
+          Text('Belum ada cabang. Buat cabang dulu di Kelola Cabang.', style: TextStyle(color: Colors.grey[700], fontSize: 12))
+        else
+          Wrap(spacing: 8, runSpacing: 4, children: [
+            for (final b in qrisBranches)
+              ChoiceChip(
+                label: Text((qrisMap[b] ?? '').isNotEmpty ? '$b  ✓' : b),
+                selected: qrisBranch == b,
+                onSelected: uploading ? null : (_) => _selectQrisBranch(b),
+              ),
+          ]),
+        SizedBox(height: 4),
+        Text('Pilih cabang, lalu unggah gambar QRIS-nya. Tanda ✓ = sudah ada QRIS.', style: TextStyle(color: Colors.grey[600], fontSize: 11)),
         SizedBox(height: 8),
         if (qrisUrl.isNotEmpty)
           Center(
@@ -638,7 +719,7 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
         Row(children: [
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: uploading ? null : _pickQris,
+              onPressed: (uploading || qrisBranch == null) ? null : _pickQris,
               icon: Icon(Icons.qr_code_2),
               label: Text(qrisUrl.isEmpty ? 'Pilih Gambar QRIS' : 'Ganti Gambar'),
             ),
@@ -646,7 +727,7 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
           if (qrisUrl.isNotEmpty) ...[
             SizedBox(width: 8),
             OutlinedButton(
-              onPressed: uploading ? null : () => setState(() => qrisUrl = ''),
+              onPressed: uploading ? null : _deleteQris,
               style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
               child: Icon(Icons.delete_outline),
             ),
@@ -669,7 +750,7 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
           child: FilledButton(
             style: FilledButton.styleFrom(backgroundColor: blue, minimumSize: Size.fromHeight(48)),
             onPressed: (saving || uploading) ? null : _savePay,
-            child: Text('Simpan Pembayaran untuk Semua Cabang'),
+            child: Text('Simpan Transfer Bank untuk Semua Cabang'),
           ),
         ),
       ]),

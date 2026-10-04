@@ -378,16 +378,18 @@ class AppState extends ChangeNotifier {
       }
 
       final st = await sb.from('app_settings').select();
+      var qrisBranch = ''; // QRIS khusus cabang HP ini (key: qris_url@<nama cabang>)
       for (final r in st) {
         final k = r['key'] as String;
         final v = r['value'] as String;
         if (k == 'store_name' && v.isNotEmpty) storeName = v;
         if (k == 'tax_percent') taxPercent = int.tryParse(v) ?? taxPercent;
-        if (k == 'qris_url') qrisUrl = v;
+        if (branch.isNotEmpty && k == 'qris_url@$branch') qrisBranch = v;
         if (k == 'bank_name') bankName = v;
         if (k == 'bank_account') bankAccount = v;
         if (k == 'bank_holder') bankHolder = v;
       }
+      qrisUrl = qrisBranch;
 
       if (sig() != before) {
         _save();
