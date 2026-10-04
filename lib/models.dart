@@ -30,8 +30,87 @@ class CartLine {
   final MenuItem item;
   int qty;
   String note; // catatan khusus item ini, mis. 'tanpa sambal'
-  CartLine(this.key, this.item, this.qty, {this.note = ''});
+  int savedQty; // porsi yang sudah tersimpan di pesanan terbuka (kasir tidak bisa mengurangi)
+  CartLine(this.key, this.item, this.qty, {this.note = '', this.savedQty = 0});
   int get total => item.price * qty;
+}
+
+/// Satu batch item dalam pesanan terbuka. Dicatat siapa & kapan menambahkan.
+class OpenLine {
+  final String menuId;
+  final String name;
+  final String note;
+  final String addedBy;
+  final int price;
+  final int qty;
+  final DateTime? addedAt;
+  OpenLine({
+    required this.menuId,
+    required this.name,
+    required this.price,
+    required this.qty,
+    this.note = '',
+    this.addedBy = '',
+    this.addedAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'menu_id': menuId,
+        'name': name,
+        'price': price,
+        'qty': qty,
+        'note': note,
+        'added_by': addedBy,
+        'added_at': addedAt?.toUtc().toIso8601String(),
+      };
+
+  factory OpenLine.fromJson(Map<String, dynamic> j) => OpenLine(
+        menuId: (j['menu_id'] as String?) ?? '',
+        name: (j['name'] as String?) ?? '',
+        price: ((j['price'] as num?) ?? 0).toInt(),
+        qty: ((j['qty'] as num?) ?? 0).toInt(),
+        note: (j['note'] as String?) ?? '',
+        addedBy: (j['added_by'] as String?) ?? '',
+        addedAt: j['added_at'] == null ? null : DateTime.tryParse(j['added_at'] as String)?.toLocal(),
+      );
+}
+
+/// Pesanan yang belum dibayar (pelanggan masih makan). Dibayar belakangan lewat Checkout biasa.
+class OpenOrder {
+  final String id;
+  final String branch;
+  final String tableNo;
+  final String customerName;
+  final String kasir;
+  final DateTime createdAt;
+  final List<OpenLine> lines;
+  OpenOrder({
+    required this.id,
+    required this.branch,
+    required this.tableNo,
+    required this.customerName,
+    required this.kasir,
+    required this.createdAt,
+    required this.lines,
+  });
+
+  int get itemCount => lines.fold(0, (a, l) => a + l.qty);
+  int get subtotal => lines.fold(0, (a, l) => a + l.price * l.qty);
+
+  /// Item yang ditambahkan belakangan (lebih dari 2 menit setelah pesanan dibuat).
+  bool isExtra(OpenLine l) => l.addedAt != null && l.addedAt!.difference(createdAt).inMinutes >= 2;
+
+  factory OpenOrder.fromCloud(Map<String, dynamic> j) => OpenOrder(
+        id: j['id'] as String,
+        branch: (j['branch'] as String?) ?? '',
+        tableNo: (j['table_no'] as String?) ?? '',
+        customerName: (j['customer_name'] as String?) ?? '',
+        kasir: (j['kasir'] as String?) ?? '',
+        createdAt: DateTime.parse(j['created_at'] as String).toLocal(),
+        lines: ((j['lines'] as List?) ?? const [])
+            .map((e) => OpenLine.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList(),
+      );
 }
 
 class TrxLine {

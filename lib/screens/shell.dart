@@ -6,6 +6,7 @@ import '../theme.dart';
 import '../utils.dart';
 import 'kasir_page.dart';
 import 'laporan_cabang.dart';
+import 'meja_terbuka.dart';
 import 'other_pages.dart';
 
 class HomeShell extends StatefulWidget {
@@ -16,10 +17,27 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int idx = 0;
+  late final AppState _st;
+
+  // layar lain (mis. daftar meja) bisa minta pindah tab lewat AppState.tabRequest
+  void _onTabRequest() {
+    final v = _st.tabRequest.value;
+    if (v < 0) return;
+    _st.tabRequest.value = -1;
+    if (mounted) setState(() => idx = v);
+  }
+
+  @override
+  void dispose() {
+    _st.tabRequest.removeListener(_onTabRequest);
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
+    _st = context.read<AppState>();
+    _st.tabRequest.addListener(_onTabRequest);
     if (cloudEnabled) {
       WidgetsBinding.instance.addPostFrameCallback((_) => context.read<AppState>().startSync());
     }
@@ -28,6 +46,7 @@ class _HomeShellState extends State<HomeShell> {
   final items = cloudEnabled
       ? [
           [Icons.home_rounded, 'Kasir'],
+          [Icons.table_restaurant_outlined, 'Meja'],
           [Icons.receipt_long_outlined, 'Transaksi'],
           [Icons.bar_chart_rounded, 'Laporan'],
           [Icons.person_outline, 'Akun'],
@@ -43,10 +62,11 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.of(context).size.width >= 700;
+    final open = cloudEnabled ? context.watch<AppState>().openOrders.length : 0;
     final body = IndexedStack(
       index: idx,
       children: cloudEnabled
-          ? [KasirPage(), TransaksiPage(), LaporanCabangPage(), AkunPage()]
+          ? [KasirPage(), MejaTerbukaPage(), TransaksiPage(), LaporanCabangPage(), AkunPage()]
           : [KasirPage(), TransaksiPage(), MenuPage(), LaporanPage(), PengaturanPage()],
     );
     return Scaffold(
@@ -62,7 +82,13 @@ class _HomeShellState extends State<HomeShell> {
               selectedIndex: idx,
               onDestinationSelected: (i) => setState(() => idx = i),
               destinations: [
-                for (final it in items) NavigationDestination(icon: Icon(it[0] as IconData), label: it[1] as String),
+                for (final it in items)
+                  NavigationDestination(
+                    icon: (it[1] == 'Meja' && open > 0)
+                        ? Badge(label: Text('$open'), child: Icon(it[0] as IconData))
+                        : Icon(it[0] as IconData),
+                    label: it[1] as String,
+                  ),
               ],
             ),
     );

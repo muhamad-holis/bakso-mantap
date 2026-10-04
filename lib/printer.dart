@@ -141,6 +141,7 @@ class _Esc {
     b.addAll([0x1B, 0x40]); // reset printer
   }
   void align(int a) => b.addAll([0x1B, 0x61, a]); // 0 kiri, 1 tengah
+  void size(int n) => b.addAll([0x1D, 0x21, n]); // 0 normal, 0x11 = lebar & tinggi 2x
   void bold(bool on) => b.addAll([0x1B, 0x45, on ? 1 : 0]);
   void line(String s) {
     b.addAll(_ascii(s).codeUnits);
@@ -240,6 +241,45 @@ List<int> buildTestBytes({required String printerName, required int paperMm}) {
   e.sep('=');
   e.align(1);
   e.line('Printer siap dipakai');
+  e.feed(paperMm == 80 ? 5 : 4);
+  if (paperMm == 80) e.cut();
+  return e.b;
+}
+
+/// Bon dapur: hanya nomor meja, nama, dan item (tanpa harga).
+/// [title] mis. 'PESANAN BARU', 'TAMBAHAN PESANAN', atau 'RINCIAN PESANAN'.
+List<int> buildKitchenBytes({
+  required String title,
+  required String tableNo,
+  required String customer,
+  required String kasir,
+  required List<OpenLine> lines,
+  required int paperMm,
+}) {
+  final w = paperMm == 80 ? 48 : 32;
+  final e = _Esc(w);
+  final now = DateTime.now();
+  e.align(1);
+  e.bold(true);
+  e.wrapped(title);
+  if (tableNo.isNotEmpty) {
+    e.size(0x11);
+    e.line('MEJA $tableNo');
+    e.size(0);
+  }
+  e.bold(false);
+  if (customer.isNotEmpty) e.wrapped(customer);
+  e.align(0);
+  e.kv(tgl(now), jam(now));
+  e.wrapped('Kasir: $kasir');
+  e.sep();
+  for (final l in lines) {
+    e.bold(true);
+    e.wrapped('${l.qty}x ${l.name}');
+    e.bold(false);
+    if (l.note.isNotEmpty) e.wrapped('   * ${l.note}');
+  }
+  e.sep();
   e.feed(paperMm == 80 ? 5 : 4);
   if (paperMm == 80) e.cut();
   return e.b;

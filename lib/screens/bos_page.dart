@@ -5,6 +5,7 @@ import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../utils.dart';
+import 'bos_open_orders.dart';
 import 'receipt_page.dart';
 
 class BosPage extends StatefulWidget {
@@ -474,6 +475,7 @@ class _BosPageState extends State<BosPage> {
                   _title('Pengeluaran per kategori'),
                   for (final e in (expByCat.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))) _row(e.key, rp(e.value)),
                 ],
+                BosOpenOrders(branch: branch),
                 _title('Metode pembayaran'),
                 if (byMethod.isEmpty) Text('Belum ada data', style: TextStyle(color: Colors.grey)),
                 for (final e in byMethod.entries) _row(e.key, rp(e.value)),

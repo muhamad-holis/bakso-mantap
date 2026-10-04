@@ -8,6 +8,15 @@ import 'config.dart';
 import 'models.dart';
 import 'utils.dart';
 
+/// Hasil menyimpan pesanan terbuka.
+class SaveResult {
+  final String? error;
+  final OpenOrder? order;
+  final List<OpenLine> added; // item baru pada penyimpanan ini (untuk bon dapur)
+  final bool merged; // true = digabung ke pesanan meja yang sudah ada
+  SaveResult({this.error, this.order, this.added = const [], this.merged = false});
+}
+
 class AppState extends ChangeNotifier {
   List<MenuItem> menus = [];
   final Map<String, CartLine> cart = {};
@@ -32,6 +41,13 @@ class AppState extends ChangeNotifier {
   int _lineSeq = 0;
   List<Shift> shifts = []; // terbaru di atas
 
+  // ---- pesanan terbuka (makan dulu, bayar belakangan) ----
+  OpenOrder? activeOrder; // pesanan terbuka yang sedang dimuat di keranjang
+  List<OpenOrder> openOrders = []; // meja belum bayar di cabang ini
+  String? openOrdersError;
+  final ValueNotifier<int> tabRequest = ValueNotifier<int>(-1); // minta HomeShell pindah tab
+  List<Map<String, String>> _pendingClose = []; // sudah dibayar, tapi status di server belum diperbarui
+
   Future<void> load() async {
     _p = await SharedPreferences.getInstance();
     storeName = _p.getString('storeName') ?? storeName;
@@ -54,6 +70,12 @@ class AppState extends ChangeNotifier {
       shifts = sh == null ? [] : (jsonDecode(sh) as List).map((e) => Shift.fromJson(Map<String, dynamic>.from(e as Map))).toList();
     } catch (_) {
       shifts = [];
+    }
+    try {
+      final pc = _p.getString('pendingClose');
+      _pendingClose = pc == null ? [] : (jsonDecode(pc) as List).map((e) => Map<String, String>.from(e as Map)).toList();
+    } catch (_) {
+      _pendingClose = [];
     }
     pruneShifts();
   }
@@ -83,6 +105,7 @@ class AppState extends ChangeNotifier {
     _p.setString('menus', jsonEncode(menus.map((e) => e.toJson()).toList()));
     _p.setString('trx', jsonEncode(transactions.map((e) => e.toJson()).toList()));
     _p.setString('shifts', jsonEncode(shifts.take(100).map((e) => e.toJson()).toList()));
+    _p.setString('pendingClose', jsonEncode(_pendingClose));
     _p.setString('storeName', storeName);
     _p.setString('kasir', kasir);
     _p.setInt('tax', taxPercent);
@@ -127,6 +150,7 @@ class AppState extends ChangeNotifier {
   void dec(String key) {
     final l = cart[key];
     if (l == null) return;
+    if (l.qty <= l.savedQty) return; // item yang sudah tersimpan hanya bisa dibatalkan oleh bos
     if (l.qty <= 1) {
       cart.remove(key);
     } else {
@@ -136,7 +160,12 @@ class AppState extends ChangeNotifier {
   }
 
   void remove(String key) {
-    cart.remove(key);
+    final l = cart[key];
+    if (l != null && l.savedQty > 0) {
+      l.qty = l.savedQty; // hanya porsi tambahan yang dibatalkan
+    } else {
+      cart.remove(key);
+    }
     notifyListeners();
   }
 
@@ -145,6 +174,7 @@ class AppState extends ChangeNotifier {
   void setLineNote(String key, String note, [int? forQty]) {
     final l = cart[key];
     if (l == null) return;
+    if (l.savedQty > 0) return; // catatan item tersimpan tidak diubah kasir
     note = note.trim();
     final n = (forQty == null || forQty >= l.qty) ? l.qty : (forQty < 1 ? 1 : forQty);
     if (n >= l.qty) {
@@ -187,6 +217,7 @@ class AppState extends ChangeNotifier {
   void clearCart() {
     cart.clear();
     discount = 0;
+    activeOrder = null;
     _resetOrder();
     notifyListeners();
   }
@@ -254,13 +285,183 @@ class AppState extends ChangeNotifier {
       customerName: orderType == orderTakeaway ? '' : customerName.trim(),
     );
     transactions.insert(0, t);
+    final oid = activeOrder?.id;
     cart.clear();
     discount = 0;
     _resetOrder();
+    if (oid != null) {
+      // pesanan terbuka ini sekarang lunas; statusnya dikirim ke server saat sinkron
+      _pendingClose.add({'order': oid, 'trx': id});
+      openOrders.removeWhere((o) => o.id == oid);
+      activeOrder = null;
+    }
     _save();
     notifyListeners();
     syncPending();
     return t;
+  }
+
+  // ---- pesanan terbuka ----
+  bool get hasNewItems => cart.values.any((l) => l.qty > l.savedQty);
+
+  /// Simpan pesanan (bayar nanti): hanya makan di tempat, wajib pilih meja, dan ada item baru.
+  bool get canSaveOrder => cloudEnabled && orderType == orderDineIn && tableNo.isNotEmpty && hasNewItems;
+
+  int orderTotal(OpenOrder o) => o.subtotal + (o.subtotal * taxPercent / 100).round();
+
+  String _orderError(Object e) {
+    if (e is PostgrestException) {
+      final m = e.message;
+      if (e.code == '42P01' || e.code == 'PGRST205' || m.contains('open_orders')) {
+        return 'Tabel pesanan terbuka belum dibuat. Minta bos menjalankan SQL supabase_update_pesanan_terbuka.sql.';
+      }
+      return m;
+    }
+    return 'Gagal menyimpan (periksa internet): $e';
+  }
+
+  Future<void> refreshOpenOrders() async {
+    if (!cloudEnabled || sb.auth.currentSession == null || branch.isEmpty) return;
+    try {
+      final r = await sb.from('open_orders').select().eq('branch', branch).eq('status', 'open').order('created_at');
+      final skip = {for (final c in _pendingClose) c['order']};
+      final list = [for (final e in r) OpenOrder.fromCloud(Map<String, dynamic>.from(e as Map))]..removeWhere((o) => skip.contains(o.id));
+      list.sort((a, b) => (int.tryParse(a.tableNo) ?? 999).compareTo(int.tryParse(b.tableNo) ?? 999));
+      openOrders = list;
+      openOrdersError = null;
+      notifyListeners();
+    } catch (e) {
+      openOrdersError = _orderError(e);
+      notifyListeners();
+    }
+  }
+
+  /// Simpan isi keranjang sebagai pesanan terbuka di meja yang dipilih.
+  /// Item baru ditambahkan ke data terbaru di server, jadi tidak menimpa tambahan dari HP lain.
+  Future<SaveResult> saveOpenOrder() async {
+    if (!cloudEnabled || sb.auth.currentSession == null) {
+      return SaveResult(error: 'Pesanan terbuka butuh login dan internet.');
+    }
+    if (branch.isEmpty) return SaveResult(error: 'Akun ini belum punya cabang.');
+    final now = DateTime.now();
+    final added = <OpenLine>[
+      for (final l in cart.values)
+        if (l.qty > l.savedQty)
+          OpenLine(menuId: l.item.id, name: l.item.name, price: l.item.price, qty: l.qty - l.savedQty, note: l.note, addedBy: kasir, addedAt: now),
+    ];
+    if (added.isEmpty) return SaveResult(error: 'Belum ada item baru untuk disimpan.');
+    try {
+      final q = sb.from('open_orders').select().eq('branch', branch).eq('status', 'open');
+      final rows = activeOrder != null ? await q.eq('id', activeOrder!.id).limit(1) : await q.eq('table_no', tableNo).limit(1);
+      final existing = rows.isEmpty ? null : OpenOrder.fromCloud(Map<String, dynamic>.from(rows.first as Map));
+      if (activeOrder != null && existing == null) {
+        return SaveResult(error: 'Pesanan ini sudah dibayar atau dibatalkan. Lepas pesanan lalu muat ulang daftar meja.');
+      }
+      final lines = <OpenLine>[...?existing?.lines, ...added];
+      final name = (existing != null && existing.customerName.isNotEmpty) ? existing.customerName : customerName.trim();
+      final rnd = (now.microsecondsSinceEpoch % 46656).toRadixString(36).toUpperCase().padLeft(3, '0');
+      final id = existing?.id ?? 'ORD${now.year}${two(now.month)}${two(now.day)}${two(now.hour)}${two(now.minute)}${two(now.second)}-$rnd';
+      final payload = {
+        'lines': lines.map((e) => e.toJson()).toList(),
+        'customer_name': name,
+        'updated_at': now.toUtc().toIso8601String(),
+      };
+      if (existing == null) {
+        await sb.from('open_orders').insert({
+          'id': id,
+          'branch': branch,
+          'table_no': tableNo,
+          'kasir': kasir,
+          'kasir_id': sb.auth.currentUser?.id,
+          'status': 'open',
+          ...payload,
+        });
+      } else {
+        await sb.from('open_orders').update(payload).eq('id', id);
+      }
+      final saved = OpenOrder(
+        id: id,
+        branch: branch,
+        tableNo: existing?.tableNo ?? tableNo,
+        customerName: name,
+        kasir: existing?.kasir ?? kasir,
+        createdAt: existing?.createdAt ?? now,
+        lines: lines,
+      );
+      final merged = existing != null && activeOrder == null;
+      cart.clear();
+      discount = 0;
+      activeOrder = null;
+      _resetOrder();
+      notifyListeners();
+      refreshOpenOrders();
+      return SaveResult(order: saved, added: added, merged: merged);
+    } catch (e) {
+      return SaveResult(error: _orderError(e));
+    }
+  }
+
+  /// Muat pesanan terbuka ke keranjang (untuk menambah item atau membayar).
+  /// Item yang sudah tersimpan ditandai (savedQty) dan tidak bisa dikurangi kasir.
+  void loadOrderToCart(OpenOrder o) {
+    cart.clear();
+    discount = 0;
+    orderType = orderDineIn;
+    tableNo = o.tableNo;
+    customerName = o.customerName;
+    for (final l in o.lines) {
+      CartLine? ex;
+      for (final x in cart.values) {
+        if (x.item.id == l.menuId && x.note == l.note && x.item.price == l.price) {
+          ex = x;
+          break;
+        }
+      }
+      if (ex != null) {
+        ex.qty += l.qty;
+        ex.savedQty += l.qty;
+      } else {
+        final k = _newKey(l.menuId);
+        MenuItem? base;
+        for (final m in menus) {
+          if (m.id == l.menuId) base = m;
+        }
+        final item = MenuItem(
+          id: l.menuId,
+          name: l.name,
+          category: base?.category ?? '',
+          price: l.price,
+          emoji: base?.emoji ?? '🍜',
+          imageUrl: base?.imageUrl ?? '',
+        );
+        final line = CartLine(k, item, l.qty, note: l.note);
+        line.savedQty = l.qty;
+        cart[k] = line;
+      }
+    }
+    activeOrder = o;
+    notifyListeners();
+  }
+
+  /// Lepas pesanan dari keranjang (pesanan tetap tersimpan di meja).
+  void cancelActiveOrder() {
+    cart.clear();
+    discount = 0;
+    activeOrder = null;
+    _resetOrder();
+    notifyListeners();
+  }
+
+  Future<void> _flushClose() async {
+    for (final c in List<Map<String, String>>.from(_pendingClose)) {
+      try {
+        final now = DateTime.now().toUtc().toIso8601String();
+        await sb.from('open_orders').update({'status': 'paid', 'trx_id': c['trx'], 'closed_at': now, 'updated_at': now}).eq('id', c['order']!);
+        _pendingClose.remove(c);
+      } catch (_) {
+        break; // offline: coba lagi nanti
+      }
+    }
   }
 
   // ---- sinkron ke bos (Supabase) ----
@@ -274,6 +475,10 @@ class AppState extends ChangeNotifier {
   int get pendingCount => myTransactions.where((t) => !t.synced).length;
 
   void setKasirQuiet(String name, [String br = '']) {
+    if (br != branch) {
+      activeOrder = null;
+      openOrders = [];
+    }
     kasir = name;
     branch = br;
   }
@@ -284,10 +489,12 @@ class AppState extends ChangeNotifier {
       syncPending();
       syncShifts();
       pullConfig();
+      refreshOpenOrders();
     });
     syncPending();
     syncShifts();
     pullConfig();
+    refreshOpenOrders();
   }
 
   String? syncError; // pesan error terakhir saat mengirim transaksi (null = lancar)
@@ -333,6 +540,7 @@ class AppState extends ChangeNotifier {
           break;
         }
       }
+      await _flushClose();
       _save();
       notifyListeners();
     } finally {
@@ -379,11 +587,13 @@ class AppState extends ChangeNotifier {
           });
         menus = list;
         final byId = {for (final m in list) m.id: m};
-        final old = Map<String, CartLine>.from(cart);
-        cart.clear();
-        for (final e in old.entries) {
-          final m = byId[e.value.item.id];
-          if (m != null) cart[e.key] = CartLine(e.key, m, e.value.qty, note: e.value.note);
+        if (activeOrder == null) {
+          final old = Map<String, CartLine>.from(cart);
+          cart.clear();
+          for (final e in old.entries) {
+            final m = byId[e.value.item.id];
+            if (m != null) cart[e.key] = CartLine(e.key, m, e.value.qty, note: e.value.note);
+          }
         }
       }
 

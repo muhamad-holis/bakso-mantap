@@ -24,6 +24,44 @@ Future<void> printReceiptFlow(BuildContext context, Trx t, String store, String 
   messenger.showSnackBar(SnackBar(content: Text(err ?? 'Struk dikirim ke printer')));
 }
 
+/// Cetak bon dapur ke printer Bluetooth. Jika printer belum dipilih, buka halaman pengaturan dulu.
+Future<void> printKitchenFlow(BuildContext context, OpenOrder o, List<OpenLine> lines, {required String title}) async {
+  final cfg = await PrinterConfig.load();
+  if (!context.mounted) return;
+  final messenger = ScaffoldMessenger.of(context);
+  if (!cfg.hasPrinter) {
+    messenger.showSnackBar(SnackBar(content: Text('Pilih printer Bluetooth dulu')));
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => PrinterPage()));
+    return;
+  }
+  messenger.hideCurrentSnackBar();
+  messenger.showSnackBar(SnackBar(content: Text('Mencetak bon dapur...'), duration: Duration(seconds: 2)));
+  final err = await ThermalPrinter.send(
+    cfg.mac,
+    buildKitchenBytes(title: title, tableNo: o.tableNo, customer: o.customerName, kasir: o.kasir, lines: lines, paperMm: cfg.paperMm),
+  );
+  messenger.hideCurrentSnackBar();
+  messenger.showSnackBar(SnackBar(content: Text(err ?? 'Bon dapur dikirim ke printer')));
+}
+
+/// Setelah pesanan disimpan: tawarkan cetak bon dapur (hanya item baru).
+Future<void> offerKitchenPrint(BuildContext context, OpenOrder o, List<OpenLine> added, {required bool addition}) async {
+  final n = added.fold<int>(0, (a, l) => a + l.qty);
+  final yes = await showDialog<bool>(
+    context: context,
+    builder: (d) => AlertDialog(
+      title: Text(addition ? 'Tambahan Meja ${o.tableNo} tersimpan' : 'Pesanan Meja ${o.tableNo} tersimpan'),
+      content: Text('Cetak bon dapur untuk $n item baru?'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Nanti')),
+        FilledButton.icon(onPressed: () => Navigator.pop(d, true), icon: Icon(Icons.print), label: Text('Cetak Bon')),
+      ],
+    ),
+  );
+  if (yes != true || !context.mounted) return;
+  await printKitchenFlow(context, o, added, title: addition ? 'TAMBAHAN PESANAN' : 'PESANAN BARU');
+}
+
 class PrinterPage extends StatefulWidget {
   PrinterPage({super.key});
   @override

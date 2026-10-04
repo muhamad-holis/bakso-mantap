@@ -6,6 +6,7 @@ import '../state.dart';
 import '../theme.dart';
 import '../utils.dart';
 import 'payment_page.dart';
+import 'printer_page.dart';
 import 'shift_page.dart';
 
 class KasirPage extends StatefulWidget {
@@ -31,6 +32,17 @@ class _KasirPageState extends State<KasirPage> {
     final left = Padding(
       padding: EdgeInsets.all(12),
       child: Column(children: [
+        if (s.activeOrder != null)
+          Container(
+            width: double.infinity,
+            margin: EdgeInsets.only(bottom: 10),
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(color: Color(0xFFE6F4EA), borderRadius: BorderRadius.circular(10)),
+            child: Text(
+              'Menambah pesanan Meja ${s.activeOrder!.tableNo}${s.activeOrder!.customerName.isEmpty ? '' : ' • ${s.activeOrder!.customerName}'}. Ketuk menu untuk menambah item.',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF14532D)),
+            ),
+          ),
         if (s.activeShift == null)
           Padding(
             padding: EdgeInsets.only(bottom: 10),
@@ -277,27 +289,91 @@ class _CartPanelState extends State<CartPanel> {
                 padding: EdgeInsets.only(bottom: 6),
                 child: Text('Pilih nomor meja dulu (atau pilih Bawa Pulang)', style: TextStyle(color: Color(0xFFC62828), fontSize: 12, fontWeight: FontWeight.w600)),
               ),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: blue,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            Row(children: [
+              if (cloudEnabled && s.orderType == orderDineIn) ...[
+                Expanded(
+                  child: SizedBox(
+                    height: 52,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: green,
+                        side: BorderSide(color: s.canSaveOrder ? green : lineColor, width: 1.5),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: s.canSaveOrder ? () => _saveOrder(context, s) : null,
+                      icon: Icon(Icons.save_outlined),
+                      label: Text('Simpan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
                 ),
-                onPressed: (s.cart.isEmpty || !s.orderReady) ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => PaymentPage())),
-                icon: Text('Checkout', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                label: Icon(Icons.arrow_forward),
+                SizedBox(width: 8),
+              ],
+              Expanded(
+                child: SizedBox(
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: blue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: (s.cart.isEmpty || !s.orderReady) ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => PaymentPage())),
+                    icon: Text(
+                      s.activeOrder != null ? 'Bayar Semua' : ((cloudEnabled && s.orderType == orderDineIn) ? 'Bayar' : 'Checkout'),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+                    label: Icon(Icons.arrow_forward),
+                  ),
+                ),
               ),
-            ),
+            ]),
+            if (s.canSaveOrder && s.activeOrder == null)
+              Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: Text('Simpan = pelanggan makan dulu, bayar belakangan', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: Colors.grey[700])),
+              ),
           ]),
         ),
       ]),
     );
   }
 
+  Future<void> _saveOrder(BuildContext context, AppState s) async {
+    final m = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+    final r = await s.saveOpenOrder();
+    if (r.error != null) {
+      m.showSnackBar(SnackBar(content: Text(r.error!)));
+      return;
+    }
+    final o = r.order!;
+    m.showSnackBar(SnackBar(content: Text(r.merged ? 'Ditambahkan ke pesanan Meja ${o.tableNo} yang sudah ada' : 'Pesanan Meja ${o.tableNo} disimpan')));
+    if (context.mounted) {
+      await offerKitchenPrint(context, o, r.added, addition: o.lines.length > r.added.length);
+    }
+    if (nav.canPop()) nav.pop();
+  }
+
   Widget _orderInfo(AppState s) {
+    final ao = s.activeOrder;
+    if (ao != null) {
+      return Container(
+        margin: EdgeInsets.only(bottom: 10),
+        padding: EdgeInsets.fromLTRB(12, 8, 4, 8),
+        decoration: cardDeco(color: Color(0xFFE6F4EA)),
+        child: Row(children: [
+          Icon(Icons.table_restaurant, color: Color(0xFF14532D)),
+          SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Meja ${ao.tableNo}${ao.customerName.isEmpty ? '' : ' • ${ao.customerName}'}', style: TextStyle(fontWeight: FontWeight.w800)),
+              Text('Pesanan terbuka • ${ao.itemCount} item tersimpan', style: TextStyle(fontSize: 12, color: Colors.grey[800])),
+            ]),
+          ),
+          TextButton(onPressed: s.cancelActiveOrder, child: Text('Lepas')),
+        ]),
+      );
+    }
     final takeaway = s.orderType == orderTakeaway;
     Widget type(String label, IconData icon) {
       final sel = s.orderType == label;
@@ -407,7 +483,16 @@ class _CartPanelState extends State<CartPanel> {
               SizedBox(width: 30, child: Text('${l.qty}', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700))),
               _qty(Icons.add, () => s.inc(l.key)),
             ]),
-            InkWell(
+            if (l.savedQty > 0)
+              Padding(
+                padding: EdgeInsets.only(top: 6, bottom: 2),
+                child: Text(
+                  'Tersimpan ${l.savedQty}${l.qty > l.savedQty ? ' • tambah ${l.qty - l.savedQty}' : ''}${l.note.isEmpty ? '' : '\nCatatan: ${l.note}'}',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF14532D)),
+                ),
+              )
+            else
+              InkWell(
               onTap: () => _noteDialog(context, s, l),
               child: Padding(
                 padding: EdgeInsets.only(top: 6, bottom: 2),

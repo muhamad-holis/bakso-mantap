@@ -125,6 +125,22 @@ class _TutupShiftPageState extends State<TutupShiftPage> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Isi kas akhir (hasil hitung uang di laci)')));
       return;
     }
+    await s.refreshOpenOrders();
+    if (!mounted) return;
+    if (s.openOrders.isNotEmpty) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (d) => AlertDialog(
+          title: Text('Masih ada meja belum bayar'),
+          content: Text('Meja: ${s.openOrders.map((o) => o.tableNo).join(', ')}\n\nSelesaikan pembayarannya dulu. Pesanan yang dibayar setelah shift ditutup akan masuk shift berikutnya.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Kembali')),
+            TextButton(onPressed: () => Navigator.pop(d, true), child: Text('Tetap Tutup Shift', style: TextStyle(color: _red))),
+          ],
+        ),
+      );
+      if (go != true || !mounted) return;
+    }
     final sales = s.cashSalesSince(a.openedAt);
     final expected = a.openingCash + sales;
     final diff = counted - expected;
