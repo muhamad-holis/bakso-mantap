@@ -57,8 +57,34 @@ class _KasirPageState extends State<KasirPage> {
                   child: Row(children: [
                     Icon(Icons.lock_open, size: 18, color: Color(0xFFB45309)),
                     SizedBox(width: 8),
-                    Expanded(child: Text('Shift belum dibuka. Ketuk untuk isi kas awal.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF7A3E00)))),
+                    Expanded(child: Text('Shift belum dibuka. Ketuk untuk isi uang modal di laci.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF7A3E00)))),
                     Icon(Icons.chevron_right, size: 18, color: Color(0xFFB45309)),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        if (s.activeShift != null)
+          Padding(
+            padding: EdgeInsets.only(bottom: 10),
+            child: Material(
+              color: Color(0xFFE8F0FE),
+              borderRadius: BorderRadius.circular(10),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => showCashOutSheet(context),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(children: [
+                    Icon(Icons.payments_outlined, size: 18, color: blue),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        s.activeShift!.cashOuts.isEmpty ? 'Uang Keluar: ketuk untuk catat uang laci yang dipakai' : 'Uang Keluar shift ini: ${rp(s.activeShift!.cashOutTotal)} (ketuk untuk catat)',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: navy),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, size: 18, color: blue),
                   ]),
                 ),
               ),

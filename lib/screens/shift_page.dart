@@ -18,14 +18,14 @@ Future<void> showOpenShiftDialog(BuildContext context) async {
     builder: (d) => AlertDialog(
       title: Text('Buka Shift'),
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Hitung uang tunai di laci, lalu isi sebagai kas awal.'),
+        Text('Hitung uang tunai yang ada di laci sekarang, lalu tulis di sini sebagai uang modal awal.'),
         SizedBox(height: 12),
         TextField(
           controller: c,
           autofocus: true,
           keyboardType: TextInputType.number,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(9)],
-          decoration: InputDecoration(labelText: 'Kas awal (Rp)', prefixText: 'Rp ', border: OutlineInputBorder()),
+          decoration: InputDecoration(labelText: 'Uang modal di laci (Rp)', prefixText: 'Rp ', border: OutlineInputBorder()),
         ),
       ]),
       actions: [
@@ -35,6 +35,128 @@ Future<void> showOpenShiftDialog(BuildContext context) async {
     ),
   );
   if (ok == true) s.startShift(int.tryParse(c.text) ?? 0);
+}
+
+const _quick = ['Kerupuk', 'Sampah', 'Es batu', 'Gas', 'Sayur', 'Lainnya'];
+
+/// Catat uang yang keluar dari laci selama shift. Otomatis mengurangi "uang seharusnya di laci".
+Future<void> showCashOutSheet(BuildContext context) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => ChangeNotifierProvider<AppState>.value(
+      value: context.read<AppState>(),
+      child: _CashOutSheet(),
+    ),
+  );
+}
+
+class _CashOutSheet extends StatefulWidget {
+  _CashOutSheet();
+  @override
+  State<_CashOutSheet> createState() => _CashOutSheetState();
+}
+
+class _CashOutSheetState extends State<_CashOutSheet> {
+  final amount = TextEditingController();
+  final label = TextEditingController();
+  String chip = '';
+
+  @override
+  void dispose() {
+    amount.dispose();
+    label.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final s = context.read<AppState>();
+    final v = int.tryParse(amount.text) ?? 0;
+    final name = label.text.trim().isNotEmpty ? label.text.trim() : chip;
+    if (v <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Isi jumlah uang yang keluar')));
+      return;
+    }
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Pilih atau tulis untuk apa uang itu')));
+      return;
+    }
+    s.addCashOut(name, v);
+    setState(() {
+      amount.clear();
+      label.clear();
+      chip = '';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
+    final a = s.activeShift;
+    final outs = a?.cashOuts ?? <CashOut>[];
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text('Uang Keluar dari Laci', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          SizedBox(height: 4),
+          Text('Catat uang laci yang dipakai (beli kerupuk, bayar sampah, dll). Jumlahnya otomatis mengurangi uang yang seharusnya ada di laci.',
+              style: TextStyle(color: Colors.grey[700], fontSize: 12)),
+          SizedBox(height: 12),
+          Wrap(spacing: 8, runSpacing: 4, children: [
+            for (final c in _quick)
+              ChoiceChip(
+                label: Text(c),
+                selected: chip == c,
+                showCheckmark: false,
+                selectedColor: blue,
+                labelStyle: TextStyle(color: chip == c ? Colors.white : navy, fontWeight: FontWeight.w600),
+                onSelected: (_) => setState(() => chip = c),
+              ),
+          ]),
+          SizedBox(height: 10),
+          TextField(
+            controller: label,
+            decoration: InputDecoration(labelText: 'Atau tulis sendiri (opsional)', border: OutlineInputBorder(), isDense: true),
+          ),
+          SizedBox(height: 10),
+          TextField(
+            controller: amount,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(9)],
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(labelText: 'Jumlah (Rp)', prefixText: 'Rp ', border: OutlineInputBorder()),
+          ),
+          SizedBox(height: 12),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(minimumSize: Size.fromHeight(48)),
+            onPressed: a == null ? null : _save,
+            icon: Icon(Icons.add),
+            label: Text('Simpan Uang Keluar'),
+          ),
+          if (outs.isNotEmpty) ...[
+            SizedBox(height: 16),
+            Text('Sudah dicatat di shift ini', style: TextStyle(fontWeight: FontWeight.w800)),
+            for (var i = 0; i < outs.length; i++)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(outs[i].label, style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(jam(outs[i].at)),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(rp(outs[i].amount), style: TextStyle(fontWeight: FontWeight.w800)),
+                  IconButton(icon: Icon(Icons.delete_outline, size: 20), onPressed: () => s.removeCashOut(i)),
+                ]),
+              ),
+            Divider(),
+            _kv('Total uang keluar', rp(a?.cashOutTotal ?? 0), bold: true),
+          ],
+        ]),
+      ),
+    );
+  }
 }
 
 Widget _kv(String a, String b, {Color? color, bool bold = false}) => Padding(
@@ -61,13 +183,23 @@ class ShiftCard extends StatelessWidget {
         Text('Shift Kasir', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         SizedBox(height: 6),
         if (a == null)
-          Text('Shift belum dibuka. Isi kas awal sebelum mulai berjualan.')
+          Text('Shift belum dibuka. Isi uang modal di laci sebelum mulai berjualan.')
         else
-          Text('Shift berjalan sejak ${jam(a.openedAt)} (${tgl(a.openedAt)})\nKas awal: ${rp(a.openingCash)}'),
+          Text('Shift berjalan sejak ${jam(a.openedAt)} (${tgl(a.openedAt)})\nUang modal di laci: ${rp(a.openingCash)}${a.cashOuts.isEmpty ? '' : '\nUang keluar: ${rp(a.cashOutTotal)}'}'),
         if (unsent > 0)
           Padding(
             padding: EdgeInsets.only(top: 6),
             child: Text('$unsent shift belum terkirim ke bos (akan dicoba lagi otomatis).', style: TextStyle(color: Colors.orange[800], fontSize: 12)),
+          ),
+        if (a != null)
+          Padding(
+            padding: EdgeInsets.only(top: 10),
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(minimumSize: Size.fromHeight(44)),
+              onPressed: () => showCashOutSheet(context),
+              icon: Icon(Icons.payments_outlined),
+              label: Text('Catat Uang Keluar'),
+            ),
           ),
         SizedBox(height: 10),
         Row(children: [
@@ -122,7 +254,7 @@ class _TutupShiftPageState extends State<TutupShiftPage> {
     }
     final counted = int.tryParse(cash.text);
     if (counted == null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Isi kas akhir (hasil hitung uang di laci)')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Tulis berapa uang yang ada di laci sekarang')));
       return;
     }
     await s.refreshOpenOrders();
@@ -142,20 +274,30 @@ class _TutupShiftPageState extends State<TutupShiftPage> {
       if (go != true || !mounted) return;
     }
     final sales = s.cashSalesSince(a.openedAt);
-    final expected = a.openingCash + sales;
+    final out = a.cashOutTotal;
+    final nonCash = s.nonCashSince(a.openedAt);
+    final expected = a.openingCash + sales - out;
     final diff = counted - expected;
     final ok = await showDialog<bool>(
       context: context,
       builder: (d) => AlertDialog(
         title: Text('Tutup shift sekarang?'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          _kv('Kas awal', rp(a.openingCash)),
-          _kv('Tunai masuk (sistem)', rp(sales)),
-          _kv('Kas seharusnya', rp(expected), bold: true),
-          Divider(height: 18),
-          _kv('Kas akhir (hitungan)', rp(counted), bold: true),
-          _kv('Selisih', selisihText(diff), bold: true, color: diff == 0 ? green : _red),
-        ]),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            _kv('Uang modal awal', rp(a.openingCash)),
+            _kv('Penjualan tunai', '+ ${rp(sales)}'),
+            _kv('Uang keluar', '- ${rp(out)}'),
+            _kv('Uang seharusnya di laci', rp(expected), bold: true),
+            Divider(height: 18),
+            _kv('Uang di laci (hitungan)', rp(counted), bold: true),
+            _kv('Selisih', selisihText(diff), bold: true, color: diff == 0 ? green : _red),
+            if (nonCash.isNotEmpty) ...[
+              Divider(height: 18),
+              Align(alignment: Alignment.centerLeft, child: Text('Tidak masuk laci (uang di rekening):', style: TextStyle(fontSize: 12, color: Colors.grey[700]))),
+              for (final e in nonCash.entries) _kv(e.key, rp(e.value), color: Colors.grey[700]),
+            ],
+          ]),
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Periksa lagi')),
           FilledButton(onPressed: () => Navigator.pop(d, true), child: Text('Ya, Tutup Shift')),
@@ -183,11 +325,25 @@ class _TutupShiftPageState extends State<TutupShiftPage> {
                 padding: EdgeInsets.all(14),
                 decoration: cardDeco(),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Shift berjalan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  Text('Berapa uang di laci sekarang?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                   SizedBox(height: 6),
-                  _kv('Dibuka', '${tgl(a.openedAt)} ${jam(a.openedAt)}'),
-                  _kv('Kasir', s.kasir),
-                  _kv('Kas awal', rp(a.openingCash)),
+                  Text('Hitung semua uang tunai yang ada di laci, lalu tulis totalnya di bawah. Jangan masukkan uang transfer atau QRIS.',
+                      style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+                  SizedBox(height: 12),
+                  TextField(
+                    controller: cash,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(9)],
+                    onChanged: (_) => setState(() {}),
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                    decoration: InputDecoration(labelText: 'Uang di laci (Rp)', prefixText: 'Rp ', border: OutlineInputBorder()),
+                  ),
+                  if (cash.text.isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.only(top: 6),
+                      child: Text(rp(int.tryParse(cash.text) ?? 0), style: TextStyle(fontWeight: FontWeight.w700, color: navy)),
+                    ),
                 ]),
               ),
               SizedBox(height: 12),
@@ -195,25 +351,33 @@ class _TutupShiftPageState extends State<TutupShiftPage> {
                 padding: EdgeInsets.all(14),
                 decoration: cardDeco(),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Hitung uang tunai di laci', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  Row(children: [
+                    Expanded(child: Text('Uang keluar dari laci', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800))),
+                    TextButton.icon(onPressed: () => showCashOutSheet(context), icon: Icon(Icons.add, size: 18), label: Text('Catat')),
+                  ]),
+                  if (a.cashOuts.isEmpty)
+                    Text('Belum ada. Kalau tadi ada uang laci yang dipakai (kerupuk, sampah, dll), catat dulu supaya hitungannya pas.',
+                        style: TextStyle(color: Colors.grey[700], fontSize: 12))
+                  else ...[
+                    for (final c in a.cashOuts) _kv(c.label, rp(c.amount)),
+                    Divider(height: 14),
+                    _kv('Total uang keluar', rp(a.cashOutTotal), bold: true),
+                  ],
+                ]),
+              ),
+              SizedBox(height: 12),
+              Container(
+                padding: EdgeInsets.all(14),
+                decoration: cardDeco(),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _kv('Dibuka', '${tgl(a.openedAt)} ${jam(a.openedAt)}'),
+                  _kv('Kasir', s.kasir),
+                  _kv('Uang modal awal', rp(a.openingCash)),
                   SizedBox(height: 10),
-                  TextField(
-                    controller: cash,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(9)],
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(labelText: 'Kas akhir (Rp)', prefixText: 'Rp ', border: OutlineInputBorder()),
-                  ),
-                  if (cash.text.isNotEmpty)
-                    Padding(
-                      padding: EdgeInsets.only(top: 6),
-                      child: Text(rp(int.tryParse(cash.text) ?? 0), style: TextStyle(fontWeight: FontWeight.w700, color: navy)),
-                    ),
-                  SizedBox(height: 12),
                   TextField(
                     controller: note,
                     maxLines: 2,
-                    decoration: InputDecoration(labelText: 'Catatan shift (opsional)', border: OutlineInputBorder()),
+                    decoration: InputDecoration(labelText: 'Catatan lain (opsional)', border: OutlineInputBorder()),
                   ),
                   SizedBox(height: 14),
                   FilledButton.icon(
@@ -261,12 +425,15 @@ class ShiftHistoryPage extends StatelessWidget {
                       if (cloudEnabled && closed != null) Icon(x.synced ? Icons.cloud_done : Icons.cloud_upload_outlined, size: 20, color: x.synced ? green : Colors.orange),
                     ]),
                     SizedBox(height: 6),
-                    _kv('Kas awal', rp(x.openingCash)),
+                    _kv('Uang modal awal', rp(x.openingCash)),
                     if (closed != null) ...[
-                      _kv('Tunai masuk (sistem)', rp(x.cashSales)),
-                      _kv('Kas seharusnya', rp(x.expectedCash)),
-                      _kv('Kas akhir (hitungan)', rp(x.closingCash)),
+                      _kv('Penjualan tunai', '+ ${rp(x.cashSales)}'),
+                      _kv('Uang keluar', '- ${rp(x.cashOutTotal)}'),
+                      for (final c in x.cashOuts) Padding(padding: EdgeInsets.only(left: 12), child: _kv(c.label, rp(c.amount), color: Colors.grey[700])),
+                      _kv('Uang seharusnya di laci', rp(x.expectedCash)),
+                      _kv('Uang di laci (hitungan)', rp(x.closingCash)),
                       _kv('Selisih', selisihText(x.difference), bold: true, color: x.difference == 0 ? green : _red),
+                      for (final e in x.nonCash.entries) _kv('${e.key} (tidak masuk laci)', rp(e.value), color: Colors.grey[700]),
                       if (x.note.isNotEmpty) Padding(padding: EdgeInsets.only(top: 4), child: Text('Catatan: ${x.note}', style: TextStyle(color: Colors.grey[700], fontSize: 12))),
                     ],
                   ]),

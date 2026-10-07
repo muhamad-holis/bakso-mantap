@@ -124,19 +124,35 @@ class TrxLine {
       TrxLine(j['name'] as String, (j['price'] as num).toInt(), (j['qty'] as num).toInt(), (j['note'] as String?) ?? '');
 }
 
-/// Shift kasir: kas awal, kas akhir (hasil hitung uang), dan selisih terhadap tunai di sistem.
+/// Uang keluar dari laci selama shift (beli kerupuk, bayar sampah, dll).
+class CashOut {
+  final String label;
+  final int amount;
+  final DateTime at;
+  CashOut(this.label, this.amount, this.at);
+  Map<String, dynamic> toJson() => {'l': label, 'a': amount, 't': at.toIso8601String()};
+  factory CashOut.fromJson(Map<String, dynamic> j) => CashOut(
+        (j['l'] as String?) ?? '',
+        ((j['a'] as num?) ?? 0).toInt(),
+        DateTime.tryParse((j['t'] as String?) ?? '') ?? DateTime.now(),
+      );
+}
+
+/// Shift kasir: uang modal awal di laci, penjualan tunai, uang keluar, uang di laci (hasil hitung), dan selisihnya.
 class Shift {
   final String id;
   final String kasir;
   final String branch;
   final DateTime openedAt;
-  final int openingCash;
+  final int openingCash; // uang modal awal di laci
   DateTime? closedAt;
   int closingCash; // uang tunai hasil hitung kasir saat tutup
   int cashSales; // total transaksi Tunai selama shift (menurut sistem)
-  int expectedCash; // kas awal + cashSales
+  int expectedCash; // modal awal + cashSales - uang keluar
   String note;
   bool synced;
+  List<CashOut> cashOuts; // uang keluar dari laci selama shift
+  Map<String, int> nonCash; // penjualan non-tunai per metode (info saja, tidak masuk laci)
   Shift({
     required this.id,
     required this.kasir,
@@ -149,12 +165,28 @@ class Shift {
     this.expectedCash = 0,
     this.note = '',
     this.synced = false,
-  });
+    List<CashOut>? cashOuts,
+    Map<String, int>? nonCash,
+  })  : cashOuts = cashOuts ?? [],
+        nonCash = nonCash ?? {};
 
   bool get isOpen => closedAt == null;
 
+  int get cashOutTotal => cashOuts.fold<int>(0, (a, c) => a + c.amount);
+  int get nonCashTotal => nonCash.values.fold<int>(0, (a, v) => a + v);
+
   /// Positif = uang lebih, negatif = uang kurang.
   int get difference => closingCash - expectedCash;
+
+  static Map<String, int> _intMap(dynamic v) {
+    if (v is! Map) return {};
+    return {for (final e in v.entries) e.key.toString(): ((e.value as num?) ?? 0).toInt()};
+  }
+
+  static List<CashOut> _outs(dynamic v) {
+    if (v is! List) return [];
+    return [for (final e in v) if (e is Map) CashOut.fromJson(Map<String, dynamic>.from(e))];
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -168,6 +200,8 @@ class Shift {
         'expectedCash': expectedCash,
         'note': note,
         'synced': synced,
+        'cashOuts': cashOuts.map((e) => e.toJson()).toList(),
+        'nonCash': nonCash,
       };
 
   factory Shift.fromJson(Map<String, dynamic> j) => Shift(
@@ -182,20 +216,38 @@ class Shift {
         expectedCash: ((j['expectedCash'] as num?) ?? 0).toInt(),
         note: (j['note'] as String?) ?? '',
         synced: (j['synced'] as bool?) ?? false,
+        cashOuts: _outs(j['cashOuts']),
+        nonCash: _intMap(j['nonCash']),
       );
 
+  /// Kolom lama (sebelum ada uang keluar & non-tunai). Dipakai bila SQL baru belum dijalankan.
+  Map<String, dynamic> toCloudLegacy() {
+    final extra = StringBuffer(note);
+    if (cashOuts.isNotEmpty) {
+      if (extra.isNotEmpty) extra.write(' | ');
+      extra.write('Uang keluar: ${cashOuts.map((c) => '${c.label} ${c.amount}').join(', ')}');
+    }
+    return {
+      'id': id,
+      'kasir': kasir,
+      'branch': branch,
+      'opened_at': openedAt.toUtc().toIso8601String(),
+      'closed_at': closedAt?.toUtc().toIso8601String(),
+      'opening_cash': openingCash,
+      'closing_cash': closingCash,
+      'cash_sales': cashSales,
+      'expected_cash': expectedCash,
+      'difference': difference,
+      'note': extra.toString(),
+    };
+  }
+
   Map<String, dynamic> toCloud() => {
-        'id': id,
-        'kasir': kasir,
-        'branch': branch,
-        'opened_at': openedAt.toUtc().toIso8601String(),
-        'closed_at': closedAt?.toUtc().toIso8601String(),
-        'opening_cash': openingCash,
-        'closing_cash': closingCash,
-        'cash_sales': cashSales,
-        'expected_cash': expectedCash,
-        'difference': difference,
+        ...toCloudLegacy(),
         'note': note,
+        'cash_out': cashOutTotal,
+        'cash_out_items': cashOuts.map((e) => e.toJson()).toList(),
+        'noncash': nonCash,
       };
 
   factory Shift.fromCloud(Map<String, dynamic> j) => Shift(
@@ -210,6 +262,8 @@ class Shift {
         expectedCash: (j['expected_cash'] as num).toInt(),
         note: (j['note'] as String?) ?? '',
         synced: true,
+        cashOuts: _outs(j['cash_out_items']),
+        nonCash: _intMap(j['noncash']),
       );
 }
 

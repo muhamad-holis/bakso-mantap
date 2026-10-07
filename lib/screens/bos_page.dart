@@ -69,7 +69,7 @@ class _BosPageState extends State<BosPage> {
       context: context,
       builder: (d) => AlertDialog(
         title: Text('Hapus catatan closing?'),
-        content: Text('${x.kasir.isEmpty ? '-' : x.kasir}${x.branch.isEmpty ? '' : ' • ${x.branch}'}\n${tgl(x.openedAt)} ${jam(x.openedAt)}–${jam(x.closedAt!)}\n\nCatatan kas awal, kas akhir, dan selisih ini hilang permanen. Transaksi dan omzet tidak berubah.'),
+        content: Text('${x.kasir.isEmpty ? '-' : x.kasir}${x.branch.isEmpty ? '' : ' • ${x.branch}'}\n${tgl(x.openedAt)} ${jam(x.openedAt)}–${jam(x.closedAt!)}\n\nCatatan uang modal, uang di laci, dan selisih ini hilang permanen. Transaksi dan omzet tidak berubah.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Batal')),
           FilledButton(onPressed: () => Navigator.pop(d, true), child: Text('Hapus')),
@@ -286,6 +286,63 @@ class _BosPageState extends State<BosPage> {
         ),
       );
 
+  Widget _sk(String a, String b, {bool bold = false, Color? color}) => Padding(
+        padding: EdgeInsets.symmetric(vertical: 2),
+        child: Row(children: [
+          Expanded(child: Text(a, style: TextStyle(fontSize: 13, color: color ?? Colors.grey[800], fontWeight: bold ? FontWeight.w800 : FontWeight.w500))),
+          Text(b, style: TextStyle(fontSize: 13, color: color, fontWeight: bold ? FontWeight.w800 : FontWeight.w600)),
+        ]),
+      );
+
+  Widget _shiftCard(Shift x) {
+    final bad = x.difference != 0;
+    final c = bad ? Color(0xFFC62828) : green;
+    return Container(
+      margin: EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.fromLTRB(14, 12, 6, 12),
+      decoration: cardDeco(),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(x.kasir.isEmpty ? '-' : x.kasir, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              if (x.branch.isNotEmpty) Text(x.branch, style: TextStyle(color: Colors.grey[700], fontSize: 12)),
+              Text('${tgl(x.openedAt)} • ${jam(x.openedAt)}–${jam(x.closedAt!)}', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+            ]),
+          ),
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(color: c.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+            child: Text(selisihText(x.difference), style: TextStyle(fontWeight: FontWeight.w800, color: c, fontSize: 12)),
+          ),
+          IconButton(
+            tooltip: 'Hapus catatan ini',
+            visualDensity: VisualDensity.compact,
+            icon: Icon(Icons.delete_outline, size: 20, color: Colors.grey[700]),
+            onPressed: () => _deleteShift(x),
+          ),
+        ]),
+        Padding(
+          padding: EdgeInsets.only(right: 8, top: 6),
+          child: Column(children: [
+            Divider(height: 14),
+            _sk('Uang modal awal', rp(x.openingCash)),
+            _sk('Penjualan tunai', '+ ${rp(x.cashSales)}'),
+            _sk('Uang keluar', '- ${rp(x.cashOutTotal)}'),
+            for (final o in x.cashOuts) Padding(padding: EdgeInsets.only(left: 12), child: _sk(o.label, rp(o.amount), color: Colors.grey[600])),
+            _sk('Uang seharusnya di laci', rp(x.expectedCash), bold: true),
+            _sk('Uang di laci (hitungan)', rp(x.closingCash), bold: true),
+            if (x.nonCash.isNotEmpty) ...[
+              Divider(height: 14),
+              for (final e in x.nonCash.entries) _sk('${e.key} (tidak masuk laci)', rp(e.value), color: Colors.grey[600]),
+            ],
+            if (x.note.isNotEmpty) Align(alignment: Alignment.centerLeft, child: Padding(padding: EdgeInsets.only(top: 6), child: Text('Catatan: ${x.note}', style: TextStyle(fontSize: 12, color: Colors.grey[700])))),
+          ]),
+        ),
+      ]),
+    );
+  }
+
   Widget _title(String t) => Padding(
         padding: EdgeInsets.fromLTRB(4, 16, 4, 8),
         child: Text(t, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
@@ -494,25 +551,7 @@ class _BosPageState extends State<BosPage> {
                   ]),
                 ),
                 if (shiftList.isEmpty) Text('Belum ada data', style: TextStyle(color: Colors.grey)),
-                for (final x in shiftList.take(10))
-                  Container(
-                    margin: EdgeInsets.only(bottom: 6),
-                    decoration: cardDeco(),
-                    child: ListTile(
-                      title: Text('${x.kasir.isEmpty ? '-' : x.kasir}${x.branch.isEmpty ? '' : ' • ${x.branch}'}', style: TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: Text('${tgl(x.openedAt)} ${jam(x.openedAt)}–${jam(x.closedAt!)}\nKas awal ${rp(x.openingCash)} • Tunai sistem ${rp(x.cashSales)}\nKas akhir ${rp(x.closingCash)}${x.note.isEmpty ? '' : '\nCatatan: ${x.note}'}'),
-                      isThreeLine: true,
-                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Text(selisihText(x.difference), style: TextStyle(fontWeight: FontWeight.w800, color: x.difference == 0 ? green : Color(0xFFC62828))),
-                        IconButton(
-                          tooltip: 'Hapus catatan ini',
-                          visualDensity: VisualDensity.compact,
-                          icon: Icon(Icons.delete_outline, size: 20, color: Colors.grey[700]),
-                          onPressed: () => _deleteShift(x),
-                        ),
-                      ]),
-                    ),
-                  ),
+                for (final x in shiftList.take(10)) _shiftCard(x),
                 _title('Transaksi terbaru'),
                 if (list.isEmpty) Text('Belum ada transaksi', style: TextStyle(color: Colors.grey)),
                 for (final t in list.take(30))

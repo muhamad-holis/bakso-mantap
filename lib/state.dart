@@ -630,6 +630,34 @@ class AppState extends ChangeNotifier {
   int cashSalesSince(DateTime from) =>
       myTransactions.where((t) => t.method == 'Tunai' && !t.date.isBefore(from)).fold<int>(0, (a, t) => a + t.total);
 
+  /// Penjualan non-tunai (Transfer, QRIS, Non Tunai) sejak [from], per metode. Hanya info: tidak masuk laci.
+  Map<String, int> nonCashSince(DateTime from) {
+    final m = <String, int>{};
+    for (final t in myTransactions) {
+      if (t.method == 'Tunai' || t.date.isBefore(from)) continue;
+      m[t.method] = (m[t.method] ?? 0) + t.total;
+    }
+    return m;
+  }
+
+  /// Catat uang keluar dari laci pada shift yang sedang berjalan.
+  bool addCashOut(String label, int amount) {
+    final x = activeShift;
+    if (x == null || amount <= 0) return false;
+    x.cashOuts.add(CashOut(label.trim().isEmpty ? 'Lainnya' : label.trim(), amount, DateTime.now()));
+    _save();
+    notifyListeners();
+    return true;
+  }
+
+  void removeCashOut(int index) {
+    final x = activeShift;
+    if (x == null || index < 0 || index >= x.cashOuts.length) return;
+    x.cashOuts.removeAt(index);
+    _save();
+    notifyListeners();
+  }
+
   void startShift(int openingCash) {
     if (activeShift != null) return;
     final now = DateTime.now();
@@ -654,7 +682,8 @@ class AppState extends ChangeNotifier {
     if (x == null) return null;
     x.closedAt = DateTime.now();
     x.cashSales = cashSalesSince(x.openedAt);
-    x.expectedCash = x.openingCash + x.cashSales;
+    x.nonCash = nonCashSince(x.openedAt);
+    x.expectedCash = x.openingCash + x.cashSales - x.cashOutTotal;
     x.closingCash = closingCash < 0 ? 0 : closingCash;
     x.note = note.trim();
     x.synced = false;
@@ -675,7 +704,14 @@ class AppState extends ChangeNotifier {
       shiftSyncError = null;
       for (final x in shifts.where((x) => !x.isOpen && !x.synced).toList()) {
         try {
-          await sb.from('shifts').upsert({...x.toCloud(), 'kasir_id': sb.auth.currentUser?.id}, onConflict: 'id', ignoreDuplicates: true);
+          try {
+            await sb.from('shifts').upsert({...x.toCloud(), 'kasir_id': sb.auth.currentUser?.id}, onConflict: 'id', ignoreDuplicates: true);
+          } on PostgrestException catch (e) {
+            // SQL terbaru belum dijalankan di Supabase: kirim dengan kolom lama (uang keluar dicatat di Catatan).
+            final colMissing = e.code == 'PGRST204' || e.code == '42703' || (e.message.contains('column') && e.message.contains('schema cache'));
+            if (!colMissing) rethrow;
+            await sb.from('shifts').upsert({...x.toCloudLegacy(), 'kasir_id': sb.auth.currentUser?.id}, onConflict: 'id', ignoreDuplicates: true);
+          }
           x.synced = true;
         } catch (e) {
           shiftSyncError = '$e';
