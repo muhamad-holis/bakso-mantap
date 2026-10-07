@@ -8,6 +8,7 @@ import 'kasir_page.dart';
 import 'laporan_cabang.dart';
 import 'meja_terbuka.dart';
 import 'other_pages.dart';
+import 'shift_page.dart';
 
 class HomeShell extends StatefulWidget {
   HomeShell({super.key});
@@ -66,8 +67,8 @@ class _HomeShellState extends State<HomeShell> {
     final body = IndexedStack(
       index: idx,
       children: cloudEnabled
-          ? [KasirPage(), MejaTerbukaPage(), TransaksiPage(), LaporanCabangPage(), AkunPage()]
-          : [KasirPage(), TransaksiPage(), MenuPage(), LaporanPage(), PengaturanPage()],
+          ? [ShiftGate(autoPrompt: true, child: KasirPage()), ShiftGate(child: MejaTerbukaPage()), TransaksiPage(), LaporanCabangPage(), AkunPage()]
+          : [ShiftGate(autoPrompt: true, child: KasirPage()), TransaksiPage(), MenuPage(), LaporanPage(), PengaturanPage()],
     );
     return Scaffold(
       body: Column(children: [

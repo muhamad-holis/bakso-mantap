@@ -33,6 +33,11 @@ class _PaymentPageState extends State<PaymentPage> {
   }
 
   void _process(AppState s) {
+    if (s.activeShift == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Buka shift dulu sebelum menerima pembayaran')));
+      Navigator.pop(context);
+      return;
+    }
     final t = s.checkout(method: method, paid: _paid(s), note: note.text.trim());
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => ReceiptPage(trx: t, fresh: true)));
   }

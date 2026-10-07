@@ -37,6 +37,65 @@ Future<void> showOpenShiftDialog(BuildContext context) async {
   if (ok == true) s.startShift(int.tryParse(c.text) ?? 0);
 }
 
+/// Kunci kasir: selama shift belum dibuka, layar [child] (Kasir / Meja) tidak bisa dipakai.
+/// [autoPrompt] = dialog "Buka Shift" langsung muncul saat aplikasi dibuka.
+class ShiftGate extends StatefulWidget {
+  final Widget child;
+  final bool autoPrompt;
+  ShiftGate({super.key, required this.child, this.autoPrompt = false});
+  @override
+  State<ShiftGate> createState() => _ShiftGateState();
+}
+
+class _ShiftGateState extends State<ShiftGate> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoPrompt) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (context.read<AppState>().activeShift == null) showOpenShiftDialog(context);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
+    if (s.activeShift != null) return widget.child;
+    return Center(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.all(28),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 380),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              padding: EdgeInsets.all(22),
+              decoration: BoxDecoration(color: Color(0xFFFFF4E0), shape: BoxShape.circle),
+              child: Icon(Icons.lock_outline, size: 48, color: Color(0xFFB45309)),
+            ),
+            SizedBox(height: 18),
+            Text('Kasir terkunci', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: navy)),
+            SizedBox(height: 8),
+            Text(
+              'Buka shift dulu sebelum mulai melayani pelanggan. Hitung uang tunai yang ada di laci, lalu isi sebagai uang modal awal.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey[700], height: 1.4),
+            ),
+            SizedBox(height: 22),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(minimumSize: Size.fromHeight(54), backgroundColor: blue),
+              onPressed: () => showOpenShiftDialog(context),
+              icon: Icon(Icons.lock_open),
+              label: Text('Buka Shift', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 const _quick = ['Kerupuk', 'Sampah', 'Es batu', 'Gas', 'Sayur', 'Lainnya'];
 
 /// Catat uang yang keluar dari laci selama shift. Otomatis mengurangi "uang seharusnya di laci".

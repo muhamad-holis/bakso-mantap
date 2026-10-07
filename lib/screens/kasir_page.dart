@@ -19,6 +19,13 @@ class _KasirPageState extends State<KasirPage> {
   String cat = 'Semua';
   String q = '';
 
+  /// Shift dibuka di hari sebelumnya tapi belum ditutup.
+  bool _staleShift(Shift x) {
+    final n = DateTime.now();
+    final o = x.openedAt;
+    return DateTime(o.year, o.month, o.day).isBefore(DateTime(n.year, n.month, n.day));
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
@@ -59,6 +66,32 @@ class _KasirPageState extends State<KasirPage> {
                     SizedBox(width: 8),
                     Expanded(child: Text('Shift belum dibuka. Ketuk untuk isi uang modal di laci.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF7A3E00)))),
                     Icon(Icons.chevron_right, size: 18, color: Color(0xFFB45309)),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        if (s.activeShift != null && _staleShift(s.activeShift!))
+          Padding(
+            padding: EdgeInsets.only(bottom: 10),
+            child: Material(
+              color: Color(0xFFFFE9E9),
+              borderRadius: BorderRadius.circular(10),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TutupShiftPage())),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(children: [
+                    Icon(Icons.warning_amber_rounded, size: 18, color: Color(0xFFC62828)),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Shift ${tgl(s.activeShift!.openedAt)} belum ditutup. Ketuk untuk tutup shift lama dulu, lalu buka shift baru.',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF8E1B1B)),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, size: 18, color: Color(0xFFC62828)),
                   ]),
                 ),
               ),
