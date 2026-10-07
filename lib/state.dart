@@ -32,6 +32,7 @@ class AppState extends ChangeNotifier {
   String bankName = '';
   String bankAccount = '';
   String bankHolder = '';
+  String bosWa = ''; // nomor WhatsApp bos: tujuan ringkasan tutup shift (diatur bos)
   int discount = 0;
   // info pesanan yang sedang dibuat di kasir
   String orderType = orderDineIn;
@@ -58,6 +59,7 @@ class AppState extends ChangeNotifier {
     bankName = _p.getString('bankName') ?? '';
     bankAccount = _p.getString('bankAccount') ?? '';
     bankHolder = _p.getString('bankHolder') ?? '';
+    bosWa = _p.getString('bosWa') ?? '';
     final m = _p.getString('menus');
     menus = m == null
         ? _defaultMenus()
@@ -114,6 +116,7 @@ class AppState extends ChangeNotifier {
     _p.setString('bankName', bankName);
     _p.setString('bankAccount', bankAccount);
     _p.setString('bankHolder', bankHolder);
+    _p.setString('bosWa', bosWa);
   }
 
   List<String> get categories => ['Semua', ...{...menus.map((e) => e.category)}];
@@ -553,7 +556,7 @@ class AppState extends ChangeNotifier {
   Future<void> pullConfig() async {
     if (!cloudEnabled || sb.auth.currentSession == null) return;
     try {
-      String sig() => '${jsonEncode(menus.map((e) => e.toJson()).toList())}|$taxPercent|$tableCount|$storeName|$qrisUrl|$bankName|$bankAccount|$bankHolder';
+      String sig() => '${jsonEncode(menus.map((e) => e.toJson()).toList())}|$taxPercent|$tableCount|$storeName|$qrisUrl|$bankName|$bankAccount|$bankHolder|$bosWa';
       final before = sig();
 
       // jumlah meja khusus cabang HP ini (diatur bos)
@@ -608,6 +611,7 @@ class AppState extends ChangeNotifier {
         if (k == 'bank_name') bankName = v;
         if (k == 'bank_account') bankAccount = v;
         if (k == 'bank_holder') bankHolder = v;
+        if (k == 'bos_wa') bosWa = v;
       }
       qrisUrl = qrisBranch;
 
@@ -761,6 +765,12 @@ class AppState extends ChangeNotifier {
     bankName = bank;
     bankAccount = account;
     bankHolder = holder;
+    _save();
+    notifyListeners();
+  }
+
+  void setBosWa(String v) {
+    bosWa = v;
     _save();
     notifyListeners();
   }

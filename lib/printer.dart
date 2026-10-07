@@ -284,3 +284,62 @@ List<int> buildKitchenBytes({
   if (paperMm == 80) e.cut();
   return e.b;
 }
+
+/// Laporan tutup shift untuk printer thermal (diserahkan ke bos / ditempel).
+List<int> buildShiftBytes({required Shift x, required String store, required int paperMm}) {
+  final w = paperMm == 80 ? 48 : 32;
+  final e = _Esc(w);
+  final closed = x.closedAt ?? DateTime.now();
+  e.align(1);
+  e.bold(true);
+  e.wrapped(store);
+  e.wrapped('LAPORAN TUTUP SHIFT');
+  e.bold(false);
+  if (x.branch.isNotEmpty) e.wrapped('Cabang ${x.branch}');
+  e.sep();
+  e.align(0);
+  e.kv('Kasir', x.kasir.isEmpty ? '-' : x.kasir);
+  e.kv('Tanggal', tgl(x.openedAt));
+  e.kv('Dibuka', jam(x.openedAt));
+  e.kv('Ditutup', jam(closed));
+  e.sep();
+  e.kv('Uang modal awal', rp(x.openingCash));
+  e.kv('Penjualan tunai', '+ ${rp(x.cashSales)}');
+  e.kv('Uang keluar', '- ${rp(x.cashOutTotal)}');
+  for (final c in x.cashOuts) {
+    e.kv('  ${c.label}', rp(c.amount));
+  }
+  e.sep();
+  e.kv('Seharusnya di laci', rp(x.expectedCash));
+  e.kv('Uang di laci', rp(x.closingCash));
+  e.bold(true);
+  e.kv('SELISIH', selisihText(x.difference));
+  e.bold(false);
+  if (x.nonCash.isNotEmpty) {
+    e.sep();
+    e.wrapped('Tidak masuk laci (rekening):');
+    for (final en in x.nonCash.entries) {
+      e.kv('  ${en.key}', rp(en.value));
+    }
+  }
+  e.sep();
+  e.bold(true);
+  e.kv('Total penjualan', rp(x.cashSales + x.nonCashTotal));
+  e.bold(false);
+  if (x.note.isNotEmpty) {
+    e.sep();
+    e.wrapped('Catatan: ${x.note}');
+  }
+  e.sep();
+  final now = DateTime.now();
+  e.line('Dicetak ${tgl(now)} ${jam(now)}');
+  e.line('');
+  e.line('');
+  e.kv('TTD Kasir', 'TTD Bos');
+  e.line('');
+  e.line('');
+  e.line(_lr('(.........)', '(.........)', w));
+  e.feed(paperMm == 80 ? 5 : 4);
+  if (paperMm == 80) e.cut();
+  return e.b;
+}

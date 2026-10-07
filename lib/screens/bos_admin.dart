@@ -503,6 +503,7 @@ class BosSettingsPage extends StatefulWidget {
 class _BosSettingsPageState extends State<BosSettingsPage> {
   late final TextEditingController store;
   late final TextEditingController tax;
+  late final TextEditingController bosWa;
   late final TextEditingController bankName;
   late final TextEditingController bankAcc;
   late final TextEditingController bankHolder;
@@ -519,6 +520,7 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
     final s = context.read<AppState>();
     store = TextEditingController(text: s.storeName);
     tax = TextEditingController(text: '${s.taxPercent}');
+    bosWa = TextEditingController(text: s.bosWa);
     bankName = TextEditingController(text: s.bankName);
     bankAcc = TextEditingController(text: s.bankAccount);
     bankHolder = TextEditingController(text: s.bankHolder);
@@ -527,6 +529,7 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
       if (!mounted) return;
       store.text = s.storeName;
       tax.text = '${s.taxPercent}';
+      bosWa.text = s.bosWa;
       bankName.text = s.bankName;
       bankAcc.text = s.bankAccount;
       bankHolder.text = s.bankHolder;
@@ -537,6 +540,7 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
   void dispose() {
     store.dispose();
     tax.dispose();
+    bosWa.dispose();
     bankName.dispose();
     bankAcc.dispose();
     bankHolder.dispose();
@@ -547,13 +551,16 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
     final s = context.read<AppState>();
     final name = store.text.trim().isEmpty ? 'Bakso TITATI Wonogiri Opik Jon' : store.text.trim();
     final t = (int.tryParse(tax.text) ?? 0).clamp(0, 100);
+    final wa = bosWa.text.replaceAll(RegExp(r'[^0-9]'), '');
     setState(() => saving = true);
     try {
       await sb.from('app_settings').upsert([
         {'key': 'store_name', 'value': name},
         {'key': 'tax_percent', 'value': '$t'},
+        {'key': 'bos_wa', 'value': wa},
       ]);
       s.saveSettings(name, s.kasir, t);
+      s.setBosWa(wa);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Tersimpan. HP kasir ikut berubah dalam ±30 detik')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menyimpan: $e')));
@@ -770,6 +777,11 @@ class _BosSettingsPageState extends State<BosSettingsPage> {
               child: Column(children: [
                 TextField(controller: store, decoration: InputDecoration(labelText: 'Nama toko')),
                 TextField(controller: tax, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Pajak PPN (%) — isi 0 jika tanpa pajak')),
+                TextField(
+                  controller: bosWa,
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(labelText: 'WhatsApp bos (mis. 081234567890)', helperText: 'Tujuan ringkasan tutup shift dari kasir. Kosongkan jika kasir boleh pilih sendiri.'),
+                ),
                 SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,

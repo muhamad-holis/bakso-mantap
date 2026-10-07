@@ -3,9 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../config.dart';
 import '../models.dart';
+import '../shift_report.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../utils.dart';
+import 'printer_page.dart';
 
 const _red = Color(0xFFC62828);
 
@@ -218,6 +220,47 @@ class _CashOutSheetState extends State<_CashOutSheet> {
   }
 }
 
+/// Setelah shift ditutup: tawarkan cetak laporan ke printer dan kirim ringkasan ke WhatsApp bos.
+Future<void> showShiftClosedDialog(BuildContext context, Shift x) {
+  final store = context.read<AppState>().storeName;
+  final good = x.difference == 0;
+  return showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (d) => AlertDialog(
+      title: Row(children: [
+        Icon(good ? Icons.check_circle : Icons.info_outline, color: good ? green : _red),
+        SizedBox(width: 8),
+        Expanded(child: Text('Shift ditutup')),
+      ]),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _kv('Uang di laci', rp(x.closingCash)),
+        _kv('Selisih', selisihText(x.difference), bold: true, color: good ? green : _red),
+        SizedBox(height: 10),
+        Text('Cetak laporan atau kirim ringkasan ke bos sebelum selesai.', style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+      ]),
+      actionsAlignment: MainAxisAlignment.center,
+      actionsOverflowDirection: VerticalDirection.down,
+      actionsOverflowButtonSpacing: 6,
+      actions: [
+        OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(minimumSize: Size(240, 44)),
+          onPressed: () => printShiftFlow(context, x, store),
+          icon: Icon(Icons.print),
+          label: Text('Cetak Laporan Shift'),
+        ),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(minimumSize: Size(240, 44), backgroundColor: green),
+          onPressed: () => sendWhatsApp(context, shiftSummaryText(x, store)),
+          icon: Icon(Icons.send),
+          label: Text('Kirim ke WhatsApp Bos'),
+        ),
+        TextButton(onPressed: () => Navigator.pop(d), child: Text('Selesai')),
+      ],
+    ),
+  );
+}
+
 Widget _kv(String a, String b, {Color? color, bool bold = false}) => Padding(
       padding: EdgeInsets.symmetric(vertical: 3),
       child: Row(children: [
@@ -366,9 +409,9 @@ class _TutupShiftPageState extends State<TutupShiftPage> {
     if (ok != true || !mounted) return;
     final closed = s.endShift(counted, note.text);
     if (closed == null) return;
-    final m = ScaffoldMessenger.of(context);
+    await showShiftClosedDialog(context, closed);
+    if (!mounted) return;
     Navigator.pop(context);
-    m.showSnackBar(SnackBar(content: Text('Shift ditutup • ${selisihText(closed.difference)}')));
   }
 
   @override
@@ -482,6 +525,20 @@ class ShiftHistoryPage extends StatelessWidget {
                         ),
                       ),
                       if (cloudEnabled && closed != null) Icon(x.synced ? Icons.cloud_done : Icons.cloud_upload_outlined, size: 20, color: x.synced ? green : Colors.orange),
+                      if (closed != null) ...[
+                        IconButton(
+                          tooltip: 'Cetak laporan',
+                          visualDensity: VisualDensity.compact,
+                          icon: Icon(Icons.print_outlined, size: 20),
+                          onPressed: () => printShiftFlow(context, x, s.storeName),
+                        ),
+                        IconButton(
+                          tooltip: 'Kirim ke WhatsApp bos',
+                          visualDensity: VisualDensity.compact,
+                          icon: Icon(Icons.send_outlined, size: 20, color: green),
+                          onPressed: () => sendWhatsApp(context, shiftSummaryText(x, s.storeName)),
+                        ),
+                      ],
                     ]),
                     SizedBox(height: 6),
                     _kv('Uang modal awal', rp(x.openingCash)),

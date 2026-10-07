@@ -24,6 +24,23 @@ Future<void> printReceiptFlow(BuildContext context, Trx t, String store, String 
   messenger.showSnackBar(SnackBar(content: Text(err ?? 'Struk dikirim ke printer')));
 }
 
+/// Cetak laporan tutup shift ke printer Bluetooth. Jika printer belum dipilih, buka halaman pengaturan dulu.
+Future<void> printShiftFlow(BuildContext context, Shift x, String store) async {
+  final cfg = await PrinterConfig.load();
+  if (!context.mounted) return;
+  final messenger = ScaffoldMessenger.of(context);
+  if (!cfg.hasPrinter) {
+    messenger.showSnackBar(SnackBar(content: Text('Pilih printer Bluetooth dulu')));
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => PrinterPage()));
+    return;
+  }
+  messenger.hideCurrentSnackBar();
+  messenger.showSnackBar(SnackBar(content: Text('Mencetak laporan shift...'), duration: Duration(seconds: 2)));
+  final err = await ThermalPrinter.send(cfg.mac, buildShiftBytes(x: x, store: store, paperMm: cfg.paperMm));
+  messenger.hideCurrentSnackBar();
+  messenger.showSnackBar(SnackBar(content: Text(err ?? 'Laporan shift dikirim ke printer')));
+}
+
 /// Cetak bon dapur ke printer Bluetooth. Jika printer belum dipilih, buka halaman pengaturan dulu.
 Future<void> printKitchenFlow(BuildContext context, OpenOrder o, List<OpenLine> lines, {required String title}) async {
   final cfg = await PrinterConfig.load();

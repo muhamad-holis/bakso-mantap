@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../cloud.dart';
 import '../models.dart';
+import '../shift_report.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../utils.dart';
 import 'bos_open_orders.dart';
+import 'bos_rekap.dart';
 import 'receipt_page.dart';
 
 class BosPage extends StatefulWidget {
@@ -56,7 +58,9 @@ class _BosPageState extends State<BosPage> {
 
   Future<void> _loadShifts() async {
     try {
-      final r = await sb.from('shifts').select().order('closed_at', ascending: false).limit(50);
+      // 40 hari terakhir (dipakai juga untuk uang keluar kasir di laporan laba)
+      final from = DateTime.now().subtract(Duration(days: 40)).toUtc().toIso8601String();
+      final r = await sb.from('shifts').select().gte('closed_at', from).order('closed_at', ascending: false).limit(1000);
       final list = [for (final e in r) Shift.fromCloud(Map<String, dynamic>.from(e as Map))];
       if (mounted) setState(() => shifts = list);
     } catch (_) {}
@@ -69,7 +73,7 @@ class _BosPageState extends State<BosPage> {
       context: context,
       builder: (d) => AlertDialog(
         title: Text('Hapus catatan closing?'),
-        content: Text('${x.kasir.isEmpty ? '-' : x.kasir}${x.branch.isEmpty ? '' : ' • ${x.branch}'}\n${tgl(x.openedAt)} ${jam(x.openedAt)}–${jam(x.closedAt!)}\n\nCatatan uang modal, uang di laci, dan selisih ini hilang permanen. Transaksi dan omzet tidak berubah.'),
+        content: Text('${x.kasir.isEmpty ? '-' : x.kasir}${x.branch.isEmpty ? '' : ' • ${x.branch}'}\n${tgl(x.openedAt)} ${jam(x.openedAt)}–${jam(x.closedAt!)}\n\nCatatan uang modal, uang di laci, selisih, dan uang keluar kasir pada shift ini hilang permanen (uang keluar juga hilang dari hitungan laba). Transaksi dan omzet tidak berubah.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Batal')),
           FilledButton(onPressed: () => Navigator.pop(d, true), child: Text('Hapus')),
@@ -200,8 +204,8 @@ class _BosPageState extends State<BosPage> {
 
   bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
 
-  Widget _labaCard(int omzet, int pajak, int pengeluaran) {
-    final laba = omzet - pajak - pengeluaran;
+  Widget _labaCard(int omzet, int pajak, int pengeluaran, int kasirOut) {
+    final laba = omzet - pajak - pengeluaran - kasirOut;
     Widget r(String a, String b, {bool bold = false, Color? color}) => Padding(
           padding: EdgeInsets.symmetric(vertical: 3),
           child: Row(children: [
@@ -217,7 +221,8 @@ class _BosPageState extends State<BosPage> {
         SizedBox(height: 6),
         r('Omzet', rp(omzet)),
         r('Pajak (PPN) terkumpul', '-${rp(pajak)}'),
-        r('Pengeluaran', '-${rp(pengeluaran)}'),
+        r('Pengeluaran (dicatat bos)', '-${rp(pengeluaran)}'),
+        r('Uang keluar kasir', '-${rp(kasirOut)}'),
         Divider(height: 16),
         r('Laba', rp(laba), bold: true, color: laba >= 0 ? green : Color(0xFFC62828)),
         if (expenseError != null)
@@ -226,10 +231,16 @@ class _BosPageState extends State<BosPage> {
             child: Text('Data pengeluaran belum bisa dimuat, jadi laba di atas belum memperhitungkannya. Jalankan supabase_update_pengeluaran.sql di Supabase.',
                 style: TextStyle(color: Colors.orange[800], fontSize: 12)),
           )
-        else if (pengeluaran == 0)
+        else if (pengeluaran == 0 && kasirOut == 0)
           Padding(
             padding: EdgeInsets.only(top: 6),
             child: Text('Belum ada pengeluaran dicatat di periode ini. Catat belanja di tab Pengeluaran.', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+          ),
+        if (kasirOut > 0)
+          Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('Uang keluar kasir diambil dari shift yang sudah ditutup. Jangan catat belanja yang sama dua kali (di tab Pengeluaran dan di Uang Keluar kasir).',
+                style: TextStyle(color: Colors.grey[600], fontSize: 12)),
           ),
       ]),
     );
@@ -421,6 +432,15 @@ class _BosPageState extends State<BosPage> {
 
               final exp = _filterExp(expenses);
               final pengeluaran = exp.fold<int>(0, (a, e) => a + e.amount);
+              final kasirOutList = cashOutEntries(shifts, from: _from, to: period == 'Kemarin' ? _today : null, branch: branch);
+              final uangKeluarKasir = kasirOutList.fold<int>(0, (a, e) => a + e.item.amount);
+              final kasirByBranch = <String, int>{};
+              final kasirByLabel = <String, int>{};
+              for (final e in kasirOutList) {
+                final bn = e.branch.isEmpty ? '(tanpa cabang)' : e.branch;
+                kasirByBranch[bn] = (kasirByBranch[bn] ?? 0) + e.item.amount;
+                kasirByLabel[e.item.label] = (kasirByLabel[e.item.label] ?? 0) + e.item.amount;
+              }
               final pajak = list.fold<int>(0, (a, t) => a + t.tax);
               final taxByBranch = <String, int>{};
               final expByBranch = <String, int>{};
@@ -432,8 +452,8 @@ class _BosPageState extends State<BosPage> {
                 final bn = e.branch.isEmpty ? 'Umum (semua cabang)' : e.branch;
                 expByBranch[bn] = (expByBranch[bn] ?? 0) + e.amount;
               }
-              final labaBranches = {...byBranch.keys, ...expByBranch.keys}.toList();
-              final labaOf = {for (final k in labaBranches) k: (byBranch[k] ?? 0) - (taxByBranch[k] ?? 0) - (expByBranch[k] ?? 0)};
+              final labaBranches = {...byBranch.keys, ...expByBranch.keys, ...kasirByBranch.keys}.toList();
+              final labaOf = {for (final k in labaBranches) k: (byBranch[k] ?? 0) - (taxByBranch[k] ?? 0) - (expByBranch[k] ?? 0) - (kasirByBranch[k] ?? 0)};
               labaBranches.sort((a, b) => labaOf[b]!.compareTo(labaOf[a]!));
               final expByCat = <String, int>{};
               for (final e in exp) {
@@ -447,7 +467,8 @@ class _BosPageState extends State<BosPage> {
                 final de = exp.where((e) => _sameDay(e.date, d)).toList();
                 final o = dt.fold<int>(0, (a, t) => a + t.total);
                 final tx = dt.fold<int>(0, (a, t) => a + t.tax);
-                final ex = de.fold<int>(0, (a, e) => a + e.amount);
+                final dk = kasirOutList.where((e) => _sameDay(e.item.at, d)).fold<int>(0, (a, e) => a + e.item.amount);
+                final ex = de.fold<int>(0, (a, e) => a + e.amount) + dk;
                 final l = o - tx - ex;
                 perHari.add(_rowSub(i == 0 ? '${tgl(d)} (hari ini)' : tgl(d), 'Omzet ${rp(o)} • Pengeluaran ${rp(ex)}', rp(l), l >= 0 ? green : Color(0xFFC62828)));
               }
@@ -515,7 +536,25 @@ class _BosPageState extends State<BosPage> {
                   ]),
                 ),
                 SizedBox(height: 10),
-                _labaCard(omzet, pajak, pengeluaran),
+                Material(
+                  color: Color(0xFFE8F0FE),
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RekapHarianPage())),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      child: Row(children: [
+                        Icon(Icons.fact_check_outlined, color: blue),
+                        SizedBox(width: 10),
+                        Expanded(child: Text('Rekap Harian Semua Cabang', style: TextStyle(fontWeight: FontWeight.w800, color: navy))),
+                        Icon(Icons.chevron_right, color: blue),
+                      ]),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 10),
+                _labaCard(omzet, pajak, pengeluaran, uangKeluarKasir),
                 SizedBox(height: 6),
                 Row(children: [_stat('Transaksi', '${list.length}'), _stat('Item terjual', '$items')]),
                 Row(children: [_stat('Rata-rata / transaksi', rp(avg)), _stat('Pajak terkumpul', rp(list.fold<int>(0, (a, t) => a + t.tax)))]),
@@ -526,11 +565,15 @@ class _BosPageState extends State<BosPage> {
                 if (branch == 'Semua Cabang' && labaBranches.length > 1) ...[
                   _title('Laba per cabang'),
                   for (final k in labaBranches)
-                    _rowSub(k, 'Omzet ${rp(byBranch[k] ?? 0)} • Pengeluaran ${rp(expByBranch[k] ?? 0)}', rp(labaOf[k]!), labaOf[k]! >= 0 ? green : Color(0xFFC62828)),
+                    _rowSub(k, 'Omzet ${rp(byBranch[k] ?? 0)} • Pengeluaran ${rp((expByBranch[k] ?? 0) + (kasirByBranch[k] ?? 0))}', rp(labaOf[k]!), labaOf[k]! >= 0 ? green : Color(0xFFC62828)),
                 ],
                 if (expByCat.isNotEmpty) ...[
                   _title('Pengeluaran per kategori'),
                   for (final e in (expByCat.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))) _row(e.key, rp(e.value)),
+                ],
+                if (kasirByLabel.isNotEmpty) ...[
+                  _title('Uang keluar kasir per keterangan'),
+                  for (final e in (kasirByLabel.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))) _row(e.key, rp(e.value)),
                 ],
                 BosOpenOrders(branch: branch),
                 _title('Metode pembayaran'),
