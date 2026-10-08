@@ -35,7 +35,7 @@ jobs:
             cp -r /tmp/lib_backup lib
             cp /tmp/pubspec_backup.yaml pubspec.yaml
           fi
-          sed -i 's/android:label="[^"]*"/android:label="Bakso TITATI"/' android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:label="[^"]*"/android:label="KASIR TITATI"/' android/app/src/main/AndroidManifest.xml
 
       - name: Pasang ikon aplikasi (android_res -> res Android)
         run: cp -r android_res/. android/app/src/main/res/
