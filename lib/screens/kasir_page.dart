@@ -376,7 +376,7 @@ class _CartPanelState extends State<CartPanel> {
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    onPressed: (s.cart.isEmpty || !s.orderReady) ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => PaymentPage())),
+                    onPressed: (s.cart.isEmpty || !s.orderReady || s.newOrderOnTakenTable) ? null : () => _goPay(context, s),
                     icon: Text(
                       s.activeOrder != null ? 'Bayar Semua' : ((cloudEnabled && s.orderType == orderDineIn) ? 'Bayar' : 'Checkout'),
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
@@ -482,7 +482,14 @@ class _CartPanelState extends State<CartPanel> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   hint: Text('Pilih'),
-                  items: [for (var i = 1; i <= s.tableCount; i++) DropdownMenuItem(value: '$i', child: Text('Meja $i'))],
+                  items: [
+                    for (var i = 1; i <= s.tableCount; i++)
+                      DropdownMenuItem(
+                        value: '$i',
+                        enabled: !s.tableTaken('$i'),
+                        child: Text(s.tableTaken('$i') ? 'Meja $i • Terisi' : 'Meja $i', style: TextStyle(color: s.tableTaken('$i') ? Colors.grey : null)),
+                      ),
+                  ],
                   onChanged: (v) => s.setTableNo(v ?? ''),
                 ),
               ),
@@ -501,9 +508,35 @@ class _CartPanelState extends State<CartPanel> {
               ),
             ]),
           ),
+          if (s.newOrderOnTakenTable)
+            Padding(
+              padding: EdgeInsets.fromLTRB(4, 8, 4, 2),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(Icons.block, size: 16, color: Color(0xFFC62828)),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Meja ${s.tableNo} sudah terisi. Pilih meja lain, atau buka pesanannya dari tab Meja untuk menambah menu.',
+                    style: TextStyle(color: Color(0xFFC62828), fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ]),
+            ),
         ],
       ]),
     );
+  }
+
+  /// Bayar langsung: cek dulu ke server bahwa meja yang dipilih belum punya pesanan terbuka.
+  Future<void> _goPay(BuildContext context, AppState s) async {
+    final nav = Navigator.of(context);
+    final m = ScaffoldMessenger.of(context);
+    if (cloudEnabled && s.orderType == orderDineIn && s.activeOrder == null && await s.tableTakenOnServer(s.tableNo)) {
+      s.refreshOpenOrders();
+      m.showSnackBar(SnackBar(content: Text('Meja ${s.tableNo} sudah terisi. Buka pesanannya dari tab Meja untuk menambah menu atau membayar.')));
+      return;
+    }
+    nav.push(MaterialPageRoute(builder: (_) => PaymentPage()));
   }
 
   Widget _row(String a, String b) => Padding(

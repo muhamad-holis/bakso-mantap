@@ -308,13 +308,37 @@ class AppState extends ChangeNotifier {
   bool get hasNewItems => cart.values.any((l) => l.qty > l.savedQty);
 
   /// Simpan pesanan (bayar nanti): hanya makan di tempat, wajib pilih meja, dan ada item baru.
-  bool get canSaveOrder => cloudEnabled && orderType == orderDineIn && tableNo.isNotEmpty && hasNewItems;
+  bool get canSaveOrder => cloudEnabled && orderType == orderDineIn && tableNo.isNotEmpty && hasNewItems && !newOrderOnTakenTable;
+
+  /// Meja [no] sudah punya pesanan terbuka di cabang ini (data di HP, diperbarui tiap 30 detik).
+  bool tableTaken(String no) => no.isNotEmpty && openOrders.any((o) => o.tableNo == no);
+
+  /// Pesanan BARU diarahkan ke meja yang sudah terisi. Dilarang: tidak boleh ada dua pesanan di satu meja.
+  /// (Menambah menu ke pesanan yang sudah ada tetap boleh: lewat tab Meja.)
+  bool get newOrderOnTakenTable => cloudEnabled && activeOrder == null && orderType == orderDineIn && tableTaken(tableNo);
+
+  /// Cek ke server (data paling baru) apakah meja [no] sudah terisi.
+  Future<bool> tableTakenOnServer(String no) async {
+    if (!cloudEnabled || sb.auth.currentSession == null || branch.isEmpty || no.isEmpty) return false;
+    try {
+      await _flushClose();
+      final r = await sb.from('open_orders').select('id').eq('branch', branch).eq('status', 'open').eq('table_no', no).limit(1);
+      final skip = {for (final c in _pendingClose) c['order']};
+      return r.any((e) => !skip.contains((e as Map)['id']));
+    } catch (_) {
+      return tableTaken(no);
+    }
+  }
 
   int orderTotal(OpenOrder o) => o.subtotal + (o.subtotal * taxPercent / 100).round();
 
   String _orderError(Object e) {
     if (e is PostgrestException) {
       final m = e.message;
+      if (e.code == '23505') {
+        refreshOpenOrders();
+        return 'Meja ini baru saja diisi pesanan lain (mungkin dari HP lain). Buka pesanannya dari tab Meja untuk menambah menu.';
+      }
       if (e.code == '42P01' || e.code == 'PGRST205' || m.contains('open_orders')) {
         return 'Tabel pesanan terbuka belum dibuat. Minta bos menjalankan SQL supabase_update_pesanan_terbuka.sql.';
       }
@@ -354,11 +378,17 @@ class AppState extends ChangeNotifier {
     ];
     if (added.isEmpty) return SaveResult(error: 'Belum ada item baru untuk disimpan.');
     try {
+      await _flushClose();
       final q = sb.from('open_orders').select().eq('branch', branch).eq('status', 'open');
       final rows = activeOrder != null ? await q.eq('id', activeOrder!.id).limit(1) : await q.eq('table_no', tableNo).limit(1);
       final existing = rows.isEmpty ? null : OpenOrder.fromCloud(Map<String, dynamic>.from(rows.first as Map));
       if (activeOrder != null && existing == null) {
         return SaveResult(error: 'Pesanan ini sudah dibayar atau dibatalkan. Lepas pesanan lalu muat ulang daftar meja.');
+      }
+      if (activeOrder == null && existing != null) {
+        // pesanan baru ke meja yang sudah terisi: ditolak (tidak boleh ada dua pesanan di satu meja)
+        refreshOpenOrders();
+        return SaveResult(error: 'Meja $tableNo sudah terisi. Buka pesanannya dari tab Meja untuk menambah menu.');
       }
       final lines = <OpenLine>[...?existing?.lines, ...added];
       final name = (existing != null && existing.customerName.isNotEmpty) ? existing.customerName : customerName.trim();

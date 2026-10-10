@@ -33,6 +33,11 @@ class _PaymentPageState extends State<PaymentPage> {
   }
 
   void _process(AppState s) {
+    if (s.newOrderOnTakenTable) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Meja ${s.tableNo} sudah terisi. Buka pesanannya dari tab Meja.')));
+      Navigator.pop(context);
+      return;
+    }
     if (s.activeShift == null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Buka shift dulu sebelum menerima pembayaran')));
       Navigator.pop(context);
