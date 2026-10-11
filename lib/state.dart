@@ -264,7 +264,7 @@ class AppState extends ChangeNotifier {
   int get tax => (taxable * taxPercent / 100).round();
   int get total => taxable + tax;
 
-  Trx checkout({required String method, required int paid, String note = ''}) {
+  Trx checkout({required String method, required int paid, String note = '', List<PayPart> payments = const []}) {
     final now = DateTime.now();
     final seq = transactions.where((t) => t.date.year == now.year && t.date.month == now.month && t.date.day == now.day).length + 1;
     final rnd = (now.microsecondsSinceEpoch % 46656).toRadixString(36).toUpperCase().padLeft(3, '0');
@@ -286,6 +286,7 @@ class AppState extends ChangeNotifier {
       orderType: orderType,
       tableNo: orderType == orderTakeaway ? '' : tableNo,
       customerName: orderType == orderTakeaway ? '' : customerName.trim(),
+      payments: payments,
     );
     transactions.insert(0, t);
     final oid = activeOrder?.id;
@@ -554,16 +555,26 @@ class AppState extends ChangeNotifier {
             schemaWarning = false;
           } catch (e) {
             if (!_isMissingColumn(e)) rethrow;
-            // Database belum punya kolom order_type/table_no/customer_name:
-            // tetap kirim transaksinya, info meja & pelanggan dititipkan di catatan.
-            final fb = Map<String, dynamic>.from(row)
-              ..remove('order_type')
-              ..remove('table_no')
-              ..remove('customer_name');
-            final info = t.orderLabel;
-            if (info.isNotEmpty) fb['note'] = [if (t.note.isNotEmpty) t.note, '[$info]'].join(' ');
-            await _upsertTrx(fb);
-            schemaWarning = true;
+            // Kolom belum ada di database: tetap kirim transaksinya.
+            // Rincian bayar gabungan, meja & pelanggan dititipkan di catatan.
+            final noPay = Map<String, dynamic>.from(row)..remove('payments');
+            if (t.isSplit) noPay['note'] = [if (t.note.isNotEmpty) t.note, t.payMarker].join(' ');
+            try {
+              if (!t.isSplit) throw e;
+              await _upsertTrx(noPay); // hanya kolom payments yang belum ada
+              schemaWarning = true;
+            } catch (e2) {
+              if (!_isMissingColumn(e2)) rethrow;
+              final fb = Map<String, dynamic>.from(noPay)
+                ..remove('order_type')
+                ..remove('table_no')
+                ..remove('customer_name');
+              final info = t.orderLabel;
+              final noteParts = [if (noPay['note'] is String && (noPay['note'] as String).isNotEmpty) noPay['note'], if (info.isNotEmpty) '[$info]'];
+              if (noteParts.isNotEmpty) fb['note'] = noteParts.join(' ');
+              await _upsertTrx(fb);
+              schemaWarning = true;
+            }
           }
           t.synced = true;
         } on PostgrestException catch (e) {
@@ -662,14 +673,17 @@ class AppState extends ChangeNotifier {
 
   /// Total transaksi Tunai (menurut sistem) sejak [from]. Uang yang masuk laci = total tagihan (kembalian sudah dikurangi).
   int cashSalesSince(DateTime from) =>
-      myTransactions.where((t) => t.method == 'Tunai' && !t.date.isBefore(from)).fold<int>(0, (a, t) => a + t.total);
+      myTransactions.where((t) => !t.date.isBefore(from)).fold<int>(0, (a, t) => a + t.cashPart);
 
   /// Penjualan non-tunai (Transfer, QRIS, Non Tunai) sejak [from], per metode. Hanya info: tidak masuk laci.
   Map<String, int> nonCashSince(DateTime from) {
     final m = <String, int>{};
     for (final t in myTransactions) {
-      if (t.method == 'Tunai' || t.date.isBefore(from)) continue;
-      m[t.method] = (m[t.method] ?? 0) + t.total;
+      if (t.date.isBefore(from)) continue;
+      for (final e in t.methodParts.entries) {
+        if (e.key == 'Tunai') continue;
+        m[e.key] = (m[e.key] ?? 0) + e.value;
+      }
     }
     return m;
   }

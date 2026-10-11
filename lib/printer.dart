@@ -205,7 +205,14 @@ List<int> buildReceiptBytes({
   e.bold(true);
   e.kv('TOTAL', rp(t.total));
   e.bold(false);
-  e.kv('Bayar', rp(t.paid));
+  if (t.isSplit) {
+    for (final p in t.payments) {
+      e.kv('Bayar ${p.method}', rp(p.tendered));
+    }
+    e.kv('Total Bayar', rp(t.paid));
+  } else {
+    e.kv('Bayar', rp(t.paid));
+  }
   e.kv('Kembali', rp(t.change));
   if (t.note.isNotEmpty) {
     e.sep();

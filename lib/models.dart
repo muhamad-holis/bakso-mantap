@@ -267,6 +267,17 @@ class Shift {
       );
 }
 
+/// Satu bagian pembayaran pada nota gabungan (mis. Tunai + QRIS).
+class PayPart {
+  final String method;
+  final int amount; // bagian tagihan yang ditanggung metode ini (bersih, tanpa kembalian)
+  final int tendered; // uang/nominal yang diterima (untuk Tunai bisa lebih besar dari amount)
+  PayPart(this.method, this.amount, [int? tendered]) : tendered = tendered ?? amount;
+  Map<String, dynamic> toJson() => {'m': method, 'a': amount, 't': tendered};
+  factory PayPart.fromJson(Map<String, dynamic> j) =>
+      PayPart((j['m'] as String?) ?? '', ((j['a'] as num?) ?? 0).toInt(), ((j['t'] as num?) ?? (j['a'] as num?) ?? 0).toInt());
+}
+
 class Trx {
   final String id;
   final DateTime date;
@@ -278,6 +289,7 @@ class Trx {
   final String orderType; // 'Makan di Tempat' / 'Bawa Pulang' ('' = transaksi lama)
   final String tableNo; // kosong jika bawa pulang
   final String customerName; // kosong jika bawa pulang / tidak diisi
+  final List<PayPart> payments; // diisi hanya untuk pembayaran gabungan (2 metode atau lebih)
   bool synced;
   Trx({
     required this.id,
@@ -297,7 +309,36 @@ class Trx {
     this.orderType = '',
     this.tableNo = '',
     this.customerName = '',
+    this.payments = const [],
   });
+
+  bool get isSplit => payments.length > 1;
+
+  /// Pembagian total ke tiap metode bayar. Transaksi biasa: seluruh total ke satu metode.
+  Map<String, int> get methodParts => isSplit ? {for (final p in payments) p.method: p.amount} : {method: total};
+
+  /// Bagian tunai (uang yang masuk laci, sudah bersih dari kembalian).
+  int get cashPart => methodParts['Tunai'] ?? 0;
+
+  static List<PayPart> _partsFrom(dynamic v) =>
+      v is List ? [for (final e in v) if (e is Map) PayPart.fromJson(Map<String, dynamic>.from(e))] : <PayPart>[];
+
+  /// Cadangan bila kolom `payments` belum ada di Supabase: rincian dititipkan di catatan sebagai [Bayar: Tunai 70000 + QRIS 50000].
+  String get payMarker => isSplit ? '[Bayar: ${payments.map((p) => '${p.method} ${p.amount}').join(' + ')}]' : '';
+
+  static List<PayPart> _fromNote(String note) {
+    final m = RegExp(r'\[Bayar: ([^\]]+)\]').firstMatch(note);
+    if (m == null) return [];
+    final out = <PayPart>[];
+    for (final seg in m.group(1)!.split(' + ')) {
+      final i = seg.lastIndexOf(' ');
+      if (i < 0) continue;
+      out.add(PayPart(seg.substring(0, i), int.tryParse(seg.substring(i + 1)) ?? 0));
+    }
+    return out.length > 1 ? out : [];
+  }
+
+  static String _stripMarker(String note) => note.replaceAll(RegExp(r'\s*\[Bayar: [^\]]+\]'), '').trim();
 
   bool get isTakeaway => orderType == orderTakeaway;
 
@@ -329,6 +370,7 @@ class Trx {
         'table_no': tableNo,
         'customer_name': customerName,
         'lines': lines.map((e) => e.toJson()).toList(),
+        if (isSplit) 'payments': payments.map((e) => e.toJson()).toList(),
       };
 
   factory Trx.fromCloud(Map<String, dynamic> j) => Trx(
@@ -344,10 +386,11 @@ class Trx {
         paid: (j['paid'] as num).toInt(),
         change: (j['change'] as num).toInt(),
         method: j['method'] as String,
-        note: (j['note'] as String?) ?? '',
+        note: _stripMarker((j['note'] as String?) ?? ''),
         orderType: (j['order_type'] as String?) ?? '',
         tableNo: (j['table_no'] as String?) ?? '',
         customerName: (j['customer_name'] as String?) ?? '',
+        payments: _partsFrom(j['payments']).length > 1 ? _partsFrom(j['payments']) : _fromNote((j['note'] as String?) ?? ''),
         synced: true,
       );
 
@@ -369,6 +412,7 @@ class Trx {
         'orderType': orderType,
         'tableNo': tableNo,
         'customerName': customerName,
+        'payments': payments.map((e) => e.toJson()).toList(),
       };
 
   factory Trx.fromJson(Map<String, dynamic> j) => Trx(
@@ -389,6 +433,7 @@ class Trx {
         orderType: (j['orderType'] as String?) ?? '',
         tableNo: (j['tableNo'] as String?) ?? '',
         customerName: (j['customerName'] as String?) ?? '',
+        payments: _partsFrom(j['payments']),
       );
 }
 

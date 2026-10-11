@@ -40,7 +40,14 @@ String receiptText(Trx t, String store) {
   if (t.discount > 0) b.writeln('Diskon   : -${rp(t.discount)}');
   b.writeln('Pajak    : ${rp(t.tax)}');
   b.writeln('TOTAL    : ${rp(t.total)}');
-  b.writeln('Bayar (${t.method}): ${rp(t.paid)}');
+  if (t.isSplit) {
+    for (final p in t.payments) {
+      b.writeln('Bayar ${p.method}: ${rp(p.tendered)}');
+    }
+    b.writeln('Total Bayar: ${rp(t.paid)}');
+  } else {
+    b.writeln('Bayar (${t.method}): ${rp(t.paid)}');
+  }
   b.writeln('Kembali  : ${rp(t.change)}');
   if (t.note.isNotEmpty) b.writeln('Catatan transaksi: ${t.note}');
   b.writeln('');

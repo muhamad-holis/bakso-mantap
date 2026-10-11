@@ -105,7 +105,9 @@ class _LaporanCabangPageState extends State<LaporanCabangPage> {
     final byMethod = <String, int>{};
     final byMenu = <String, int>{};
     for (final t in list) {
-      byMethod[t.method] = (byMethod[t.method] ?? 0) + t.total;
+      for (final e in t.methodParts.entries) {
+        byMethod[e.key] = (byMethod[e.key] ?? 0) + e.value;
+      }
       for (final l in t.lines) {
         byMenu[l.name] = (byMenu[l.name] ?? 0) + l.qty;
       }

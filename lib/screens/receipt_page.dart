@@ -85,7 +85,11 @@ class ReceiptPage extends StatelessWidget {
                 if (t.discount > 0) kv('Diskon', '-${rp(t.discount)}'),
                 kv('Pajak', rp(t.tax)),
                 kv('Total', rp(t.total), bold: true),
-                kv('Bayar', rp(t.paid)),
+                if (t.isSplit) ...[
+                  for (final p in t.payments) kv('Bayar ${p.method}', rp(p.tendered)),
+                  kv('Total Bayar', rp(t.paid)),
+                ] else
+                  kv('Bayar', rp(t.paid)),
                 kv('Kembalian', rp(t.change), bold: true),
                 if (t.note.isNotEmpty) ...[Divider(height: 22), Text('Catatan transaksi: ${t.note}')],
                 Divider(height: 22),

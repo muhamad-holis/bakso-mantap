@@ -173,7 +173,9 @@ class _RekapHarianPageState extends State<RekapHarianPage> {
       x.omzet += t.total;
       x.count += 1;
       x.tax += t.tax;
-      x.byMethod[t.method] = (x.byMethod[t.method] ?? 0) + t.total;
+      for (final e in t.methodParts.entries) {
+        x.byMethod[e.key] = (x.byMethod[e.key] ?? 0) + e.value;
+      }
     }
     var generalExp = 0;
     for (final e in expenses) {

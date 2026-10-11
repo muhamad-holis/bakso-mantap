@@ -423,7 +423,9 @@ class _BosPageState extends State<BosPage> {
               for (final t in list) {
                 final bn = t.branch.isEmpty ? '(tanpa cabang)' : t.branch;
                 byBranch[bn] = (byBranch[bn] ?? 0) + t.total;
-                byMethod[t.method] = (byMethod[t.method] ?? 0) + t.total;
+                for (final e in t.methodParts.entries) {
+                  byMethod[e.key] = (byMethod[e.key] ?? 0) + e.value;
+                }
                 for (final l in t.lines) {
                   byMenu[l.name] = (byMenu[l.name] ?? 0) + l.qty;
                 }
