@@ -5,6 +5,7 @@ import '../state.dart';
 import '../theme.dart';
 import '../utils.dart';
 import 'receipt_page.dart';
+import 'rekap_menu.dart';
 
 /// Laporan transaksi & pendapatan untuk akun kasir/cabang (mode login).
 /// Data diambil dari riwayat cabang ini di HP (s.myTransactions), jadi tetap
@@ -161,6 +162,24 @@ class _LaporanCabangPageState extends State<LaporanCabangPage> {
           Text(rp(omzet), style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w800)),
           if (kemarin != null) Text(kemarin, style: TextStyle(color: Color(0xFFB8C7DE), fontSize: 12)),
         ]),
+      ),
+      SizedBox(height: 10),
+      Material(
+        color: Color(0xFFE8F0FE),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RekapMenuPage(localOnly: true))),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(children: [
+              Icon(Icons.ramen_dining_outlined, color: blue),
+              SizedBox(width: 10),
+              Expanded(child: Text('Rekap Penjualan Menu (Harian / Mingguan / Bulanan)', style: TextStyle(fontWeight: FontWeight.w800, color: navy))),
+              Icon(Icons.chevron_right, color: blue),
+            ]),
+          ),
+        ),
       ),
       SizedBox(height: 6),
       Row(children: [_stat('Transaksi', '${list.length}'), _stat('Item terjual', '$items')]),

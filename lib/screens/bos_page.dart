@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../utils.dart';
 import 'bos_open_orders.dart';
 import 'bos_rekap.dart';
+import 'rekap_menu.dart';
 import 'receipt_page.dart';
 
 class BosPage extends StatefulWidget {
@@ -550,6 +551,24 @@ class _BosPageState extends State<BosPage> {
                         Icon(Icons.fact_check_outlined, color: blue),
                         SizedBox(width: 10),
                         Expanded(child: Text('Rekap Harian Semua Cabang', style: TextStyle(fontWeight: FontWeight.w800, color: navy))),
+                        Icon(Icons.chevron_right, color: blue),
+                      ]),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 10),
+                Material(
+                  color: Color(0xFFE8F0FE),
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RekapMenuPage())),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      child: Row(children: [
+                        Icon(Icons.ramen_dining_outlined, color: blue),
+                        SizedBox(width: 10),
+                        Expanded(child: Text('Rekap Penjualan Menu (Harian / Mingguan / Bulanan)', style: TextStyle(fontWeight: FontWeight.w800, color: navy))),
                         Icon(Icons.chevron_right, color: blue),
                       ]),
                     ),
